@@ -5,7 +5,7 @@ export default {
   key: "apify-scrape-single-url",
   name: "Scrape Single URL",
   description: "Executes a scraper on a specific website and returns its content as text. This action is perfect for extracting content from a single page.",
-  version: "0.0.3",
+  version: "0.0.4",
   type: "action",
   props: {
     apify,
@@ -36,7 +36,7 @@ export default {
     },
   },
   async run({ $ }) {
-    const response = await this.apify.runActor({
+    const startActorResponse = await this.apify.runActorAsynchronously({
       $,
       actorId: ACTOR_ID,
       data: {
@@ -51,7 +51,49 @@ export default {
         ],
       },
     });
+
+    console.log("Started Actor run:", startActorResponse);
+
+    const {
+      data: {
+        id: runId, defaultDatasetId,
+      },
+    } = startActorResponse;
+    console.log("Actor Run ID:", runId);
+    console.log("Dataset ID:", defaultDatasetId);
+
+    let actorRunStatus = null;
+    let retries = 0;
+    const maxRetries = 30;
+    const delay = 5 * 1000;
+
+    while (actorRunStatus !== "SUCCEEDED" && actorRunStatus !== "FAILED" && retries < maxRetries) {
+      await new Promise((resolve) => setTimeout(resolve, delay));
+      const runDetails = await this.apify.getActorRun({
+        $,
+        runId,
+      });
+      actorRunStatus = runDetails.data.status;
+      console.log(`Actor run status: ${actorRunStatus} (retry: ${retries + 1}/${maxRetries})`);
+      retries++;
+    }
+
+    if (actorRunStatus !== "SUCCEEDED") {
+      throw new Error(`Actor run did not succeed. Final status: ${actorRunStatus}`);
+    }
+
+    const datasetResponse = await this.apify.listDatasetItems({
+      $,
+      datasetId: defaultDatasetId,
+      params: {
+        limit: 1,
+        offset: 0,
+      },
+    });
+
+    console.log(datasetResponse);
+
     $.export("$summary", `Successfully scraped content from ${this.url}`);
-    return response;
+    return datasetResponse[0];
   },
 };
