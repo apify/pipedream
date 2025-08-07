@@ -61,7 +61,6 @@ export default {
 
     do {
       const items = await this.apify.listDatasetItems({
-        $,
         datasetId: this.datasetId,
         params,
       });

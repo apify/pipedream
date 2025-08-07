@@ -1,5 +1,5 @@
-import { axios } from "@pipedream/platform";
 import { LIMIT } from "./common/constants.mjs";
+import { ApifyClient } from "apify-client";
 
 export default {
   type: "app",
@@ -10,7 +10,7 @@ export default {
       label: "Key-Value Store Id",
       description: "The Id of the key-value store.",
       async options({ page }) {
-        const { data: { items } } = await this.listKeyValueStores({
+        const { items } = await this.listKeyValueStores({
           params: {
             offset: LIMIT * page,
             limit: LIMIT,
@@ -37,11 +37,9 @@ export default {
         const listFn = actorSource === "store"
           ? this.listActors
           : this.listUserActors;
-        const { data: { items } } = await listFn({
-          params: {
-            offset: LIMIT * page,
-            limit: LIMIT,
-          },
+        const { items } = await listFn({
+          offset: LIMIT * page,
+          limit: LIMIT,
         });
 
         return items.map((actor) => ({
@@ -73,7 +71,7 @@ export default {
       label: "Dataset ID",
       description: "The ID of the dataset to retrieve items within",
       async options({ page }) {
-        const { data: { items } } = await this.listDatasets({
+        const { items } = await this.listDatasets({
           params: {
             offset: LIMIT * page,
             limit: LIMIT,
@@ -92,12 +90,17 @@ export default {
       label: "Build",
       description: "Specifies the Actor build to run. It can be either a build tag or build number.",
       async options({ actorId }) {
-        const { data: { taggedBuilds } } = await this.getActor({
+        const { taggedBuilds } = await this.getActor({
           actorId,
         });
+
         return Object.entries(taggedBuilds).map(([
           name,
-        ]) => name);
+          build,
+        ]) => ({
+          label: name,
+          value: build.buildId,
+        }));
       },
     },
     clean: {
@@ -133,146 +136,114 @@ export default {
     },
   },
   methods: {
-    _baseUrl() {
-      return "https://api.apify.com/v2";
-    },
-    _headers() {
-      return {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${this.$auth.api_token}`,
-        "x-apify-integration-platform": "pipedream",
-      };
-    },
-    _makeRequest({
-      $ = this, path, ...opts
-    }) {
-      return axios($, {
-        url: this._baseUrl() + path,
-        headers: this._headers(),
-        ...opts,
+    _client() {
+      return new ApifyClient({
+        token: this.$auth.api_token,
+        requestInterceptors: [
+          ({ headers }) => ({
+            ...headers,
+            "x-apify-integration-platform": "pipedream",
+          }),
+        ],
       });
     },
     createHook(opts = {}) {
-      return this._makeRequest({
-        method: "POST",
-        path: "/webhooks",
-        ...opts,
-      });
+      return this._client().webhooks()
+        .create(opts);
     },
     deleteHook(hookId) {
-      return this._makeRequest({
-        method: "DELETE",
-        path: `/webhooks/${hookId}`,
-      });
+      return this._client().webhook(hookId)
+        .delete();
     },
     runActor({
-      actorId, ...opts
+      actorId, data, params,
     }) {
-      return this._makeRequest({
-        method: "POST",
-        path: `/acts/${actorId}/run-sync`,
-        ...opts,
-      });
+      return this._client().actor(actorId)
+        .call(data, params);
     },
-    getActorRun({
-      runId, ...opts
-    }) {
-      return this._makeRequest({
-        method: "GET",
-        path: `/actor-runs/${runId}`,
-        ...opts,
-      });
+    getActorRun({ runId }) {
+      return this._client().run(runId)
+        .get();
     },
     runActorAsynchronously({
-      actorId, ...opts
+      actorId, data, params,
     }) {
-      return this._makeRequest({
-        method: "POST",
-        path: `/acts/${actorId}/runs`,
-        ...opts,
-      });
+      return this._client().actor(actorId)
+        .start(data, params);
     },
-    runTask({ taskId }) {
-      return this._makeRequest({
-        method: "POST",
-        path: `/actor-tasks/${taskId}/runs`,
-      });
+    runTask({
+      taskId, params,
+    }) {
+      return this._client().task(taskId)
+        .start(params);
     },
     getActor({ actorId }) {
-      return this._makeRequest({
-        path: `/acts/${actorId}`,
-      });
+      return this._client().actor(actorId)
+        .get();
     },
     getBuild(actorId, buildId) {
       if (buildId) {
-        return this._makeRequest({
-          path: `/actor-builds/${buildId}`,
-        });
+        return this._client().build(buildId)
+          .get();
       }
 
-      return this._makeRequest({
-        path: `/acts/${actorId}/builds/default`,
-      });
+      return this._client().actor(actorId)
+        .builds()
+        .list()
+        .then(({ items }) => items[0]);
     },
     listActors(opts = {}) {
-      return this._makeRequest({
-        path: "/store",
-        ...opts,
-      });
+      return this._client().store()
+        .list(opts);
     },
     listUserActors(opts = {}) {
-      return this._makeRequest({
-        path: "/acts?desc=1&sortBy=stats.lastRunStartedAt",
-        ...opts,
-      });
+      return this._client().actors()
+        .list({
+          my: true,
+          sortBy: "stats.lastRunStartedAt",
+          desc: true,
+          ...opts,
+        });
     },
     listTasks(opts = {}) {
-      return this._makeRequest({
-        path: "/actor-tasks",
-        ...opts,
-      });
+      return this._client().tasks()
+        .list(opts);
     },
     listBuilds({ actorId }) {
-      return this._makeRequest({
-        path: `/acts/${actorId}/builds`,
-      });
+      return this._client().actor(actorId)
+        .builds()
+        .list();
     },
     listKeyValueStores(opts = {}) {
-      return this._makeRequest({
-        path: "/key-value-stores",
-        ...opts,
-      });
+      return this._client().keyValueStores()
+        .list(opts);
     },
     listDatasets(opts = {}) {
-      return this._makeRequest({
-        path: "/datasets",
-        ...opts,
-      });
+      return this._client().datasets()
+        .list(opts);
     },
     listDatasetItems({
       datasetId, ...opts
     }) {
-      return this._makeRequest({
-        path: `/datasets/${datasetId}/items`,
-        ...opts,
-      });
+      return this._client().dataset(datasetId)
+        .items()
+        .list(opts);
     },
-    runTaskSynchronously({
-      taskId, ...opts
+    async runTaskSynchronously({
+      taskId, params,
     }) {
-      return this._makeRequest({
-        path: `/actor-tasks/${taskId}/run-sync-get-dataset-items`,
-        ...opts,
+      const run = await this._client().task(taskId)
+        .call({}, params);
+
+      return this.listDatasetItems({
+        datasetId: run.defaultDatasetId,
       });
     },
     setKeyValueStoreRecord({
-      storeId, recordKey, ...opts
+      storeId, recordKey, data,
     }) {
-      return this._makeRequest({
-        method: "PUT",
-        path: `/key-value-stores/${storeId}/records/${recordKey}`,
-        ...opts,
-      });
+      return this._client().keyValueStore(storeId)
+        .setRecord(recordKey, data);
     },
     formatActorOrTaskLabel({
       title, username, name,

@@ -71,10 +71,9 @@ export default {
     ) {
       await new Promise((resolve) => setTimeout(resolve, delay));
       const runDetails = await this.apify.getActorRun({
-        $,
         runId,
       });
-      actorRunStatus = runDetails.data.status;
+      actorRunStatus = runDetails.status;
       retries++;
     }
 
@@ -82,7 +81,7 @@ export default {
       throw new Error(`Actor run did not succeed. Final status: ${actorRunStatus}`);
     }
 
-    const datasetResponse = await this.apify.listDatasetItems({
+    const { items } = await this.apify.listDatasetItems({
       $,
       datasetId: defaultDatasetId,
       params: {
@@ -91,9 +90,9 @@ export default {
       },
     });
 
-    console.log(datasetResponse);
+    console.log(items);
 
     $.export("$summary", `Successfully scraped content from ${this.url}`);
-    return datasetResponse[0];
+    return items[0];
   },
 };

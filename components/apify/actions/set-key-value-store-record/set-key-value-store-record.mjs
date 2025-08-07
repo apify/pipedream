@@ -28,7 +28,6 @@ export default {
   },
   async run({ $ }) {
     const response = await this.apify.setKeyValueStoreRecord({
-      $,
       storeId: this.keyValueStoreId,
       recordKey: this.key,
       data: parseObject(this.value),

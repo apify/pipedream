@@ -66,7 +66,6 @@ export default {
   },
   async run({ $ }) {
     const response = await this.apify.runTaskSynchronously({
-      $,
       taskId: this.taskId,
       params: {
         timeout: this.timeout,
