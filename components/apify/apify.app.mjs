@@ -178,16 +178,30 @@ export default {
       return this._client().actor(actorId)
         .get();
     },
-    getBuild(actorId, buildId) {
-      if (buildId) {
-        return this._client().build(buildId)
+    async getBuild(actorId, buildId) {
+      if (!buildId) {
+        // Get actor details
+        const actor = await this._client().actor(actorId)
           .get();
+
+        if (!actor) {
+          throw new Error(`Actor ${actorId} not found.`);
+        }
+
+        // Ensure "latest" build tag exists
+        const latestBuild = actor.taggedBuilds?.latest;
+        if (!latestBuild) {
+          throw new Error(
+            `Actor ${actorId} has no build tagged "latest". Please build the actor first.`,
+          );
+        }
+
+        buildId = latestBuild.buildId;
       }
 
-      return this._client().actor(actorId)
-        .builds()
-        .list()
-        .then(({ items }) => items[0]);
+      // Fetch the build by ID
+      return this._client().build(buildId)
+        .get();
     },
     listActors(opts = {}) {
       return this._client().store()
