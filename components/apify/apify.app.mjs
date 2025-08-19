@@ -11,11 +11,9 @@ export default {
       description: "The Id of the key-value store.",
       async options({ page }) {
         const { items } = await this.listKeyValueStores({
-          params: {
-            offset: LIMIT * page,
-            limit: LIMIT,
-            unnamed: true,
-          },
+          offset: LIMIT * page,
+          limit: LIMIT,
+          unnamed: true,
         });
 
         return items.map(({
@@ -53,11 +51,9 @@ export default {
       label: "Task ID",
       description: "The ID of the task to monitor.",
       async options({ page }) {
-        const { data: { items } } = await this.listTasks({
-          params: {
-            offset: LIMIT * page,
-            limit: LIMIT,
-          },
+        const { items } = await this.listTasks({
+          offset: LIMIT * page,
+          limit: LIMIT,
         });
 
         return items.map((task) => ({
@@ -72,10 +68,8 @@ export default {
       description: "The ID of the dataset to retrieve items within",
       async options({ page }) {
         const { items } = await this.listDatasets({
-          params: {
-            offset: LIMIT * page,
-            limit: LIMIT,
-          },
+          offset: LIMIT * page,
+          limit: LIMIT,
         });
         return items?.map(({
           id: value, name: label,
@@ -226,11 +220,10 @@ export default {
         .list(opts);
     },
     listDatasetItems({
-      datasetId, ...opts
+      datasetId, params,
     }) {
       return this._client().dataset(datasetId)
-        .items()
-        .list(opts);
+        .listItems(params);
     },
     async runTaskSynchronously({
       taskId, params,
