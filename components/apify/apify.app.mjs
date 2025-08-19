@@ -140,9 +140,12 @@ export default {
       return new ApifyClient({
         token: this.$auth.api_token,
         requestInterceptors: [
-          ({ headers }) => ({
-            ...headers,
-            "x-apify-integration-platform": "pipedream",
+          (config) => ({
+            ...config,
+            headers: {
+              ...(config.headers || {}),
+              "x-apify-integration-platform": "pipedream",
+            },
           }),
         ],
       });
