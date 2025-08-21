@@ -121,9 +121,9 @@ export default {
       description: "An array of fields which should transform nested objects into flat structures. For example, with `flatten=\"foo\"` the object `{\"foo\":{\"bar\": \"hello\"}}` is turned into `{\"foo.bar\": \"hello\"}`",
       optional: true,
     },
-    maxResults: {
+    limit: {
       type: "integer",
-      label: "Max Results",
+      label: "Limit",
       description: "The maximum number of items to return",
       default: LIMIT,
       optional: true,
