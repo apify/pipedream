@@ -239,15 +239,11 @@ export default {
       return this._client().dataset(datasetId)
         .listItems(params);
     },
-    async runTaskSynchronously({
+    runTaskSynchronously({
       taskId, params,
     }) {
-      const run = await this._client().task(taskId)
+      return this._client().task(taskId)
         .call({}, params);
-
-      return this.listDatasetItems({
-        datasetId: run.defaultDatasetId,
-      });
     },
     setKeyValueStoreRecord({
       storeId, recordKey, data,
