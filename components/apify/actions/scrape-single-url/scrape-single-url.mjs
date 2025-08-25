@@ -1,5 +1,5 @@
 import apify from "../../apify.app.mjs";
-import { ACTOR_ID } from "../../common/constants.mjs";
+import { WCC_ACTOR_ID } from "../../common/constants.mjs";
 import {
   ACTOR_JOB_STATUSES, ACTOR_JOB_TERMINAL_STATUSES,
 } from "@apify/consts";
@@ -12,6 +12,12 @@ export default {
   type: "action",
   props: {
     apify,
+    paidPlan: {
+      propDefinition: [
+        apify,
+        "paidPlan",
+      ],
+    },
     url: {
       type: "string",
       label: "URL",
@@ -35,14 +41,72 @@ export default {
           label: "Raw HTTP client (Cheerio) - Extremely fast, but cannot handle dynamic content",
           value: "cheerio",
         },
+        {
+          label: "The crawler automatically switches between raw HTTP for static pages and Chrome browser (via Playwright) for dynamic pages, to get the maximum performance wherever possible.",
+          value: "playwright:adaptive",
+        },
+      ],
+    },
+    clean: {
+      propDefinition: [
+        apify,
+        "clean",
+      ],
+    },
+    fields: {
+      propDefinition: [
+        apify,
+        "fields",
+      ],
+    },
+    omit: {
+      propDefinition: [
+        apify,
+        "omit",
+      ],
+    },
+    flatten: {
+      propDefinition: [
+        apify,
+        "flatten",
+      ],
+    },
+    limit: {
+      propDefinition: [
+        apify,
+        "limit",
       ],
     },
   },
+  async additionalProps() {
+    const props = {};
+    if (this.paidPlan) {
+      props.waitSecs = {
+        type: "integer",
+        label: "Waiting time (seconds)",
+        description: "Specifies how long to wait for the run to complete. If not set, the wait time defaults to the Pipedream’s platform limits (up to 300 seconds for the whole step execution).",
+        optional: true,
+        default: this.apify.getRequestTimeout(true),
+      };
+    }
+    return props;
+  },
   async run({ $ }) {
-    const startActorResponse = await this.apify.runActorAsynchronously({
-      $,
-      actorId: ACTOR_ID,
-      data: {
+    const {
+      status,
+      id,
+      actId,
+      startedAt,
+      finishedAt,
+      options: { build },
+      buildId,
+      defaultKeyValueStoreId,
+      defaultDatasetId,
+      defaultRequestQueueId,
+      consoleUrl,
+    } = await this.apify.runActor({
+      actorId: WCC_ACTOR_ID,
+      input: {
         crawlerType: this.crawlerType,
         maxCrawlDepth: 0,
         maxCrawlPages: 1,
@@ -53,46 +117,44 @@ export default {
           },
         ],
       },
+      options: {
+        waitSecs: this.apify.getRequestTimeout(this.waitSecs),
+      },
     });
 
-    const {
-      data: {
-        id: runId, defaultDatasetId,
-      },
-    } = startActorResponse;
+    const datasetItems = [];
 
-    let actorRunStatus = null;
-    let retries = 0;
-    const maxRetries = 30;
-    const delay = 1000;
-
-    while ((!actorRunStatus || !ACTOR_JOB_TERMINAL_STATUSES.includes(actorRunStatus))
-          && retries < maxRetries
-    ) {
-      await new Promise((resolve) => setTimeout(resolve, delay));
-      const runDetails = await this.apify.getActorRun({
-        runId,
+    if (ACTOR_JOB_TERMINAL_STATUSES.includes(status)) {
+      if (status !== ACTOR_JOB_STATUSES.SUCCEEDED) {
+        throw new Error(`Run has finished with status: ${status}. Inspect it here: ${consoleUrl}`);
+      }
+      const { items } = await this.apify.listDatasetItems({
+        datasetId: defaultDatasetId,
+        params: {
+          clean: this.clean,
+          fields: this.fields && this.fields.join(),
+          omit: this.omit && this.omit.join(),
+          flatten: this.flatten && this.flatten.join(),
+          limit: this.limit,
+        },
       });
-      actorRunStatus = runDetails.status;
-      retries++;
+      datasetItems.push(...items);
+    } else {
+      throw new Error(`The run did not finish in time (${status}): waiting for run to finish timed out or Pipedream platform limitation were reached. To retrieve the items reliably, chain this step with a Get Dataset Items step.`);
     }
 
-    if (actorRunStatus !== ACTOR_JOB_STATUSES.SUCCEEDED) {
-      throw new Error(`Actor run did not succeed. Final status: ${actorRunStatus}`);
-    }
-
-    const { items } = await this.apify.listDatasetItems({
-      $,
-      datasetId: defaultDatasetId,
-      params: {
-        limit: 1,
-        offset: 0,
-      },
-    });
-
-    console.log(items);
-
-    $.export("$summary", `Successfully scraped content from ${this.url}`);
-    return items[0];
+    $.export("$summary", "Run of Web Content Crawler finished successfully.");
+    return {
+      runId: id,
+      actId,
+      startedAt,
+      finishedAt,
+      build,
+      buildId,
+      defaultKeyValueStoreId,
+      defaultDatasetId,
+      defaultRequestQueueId,
+      datasetItems,
+    };
   },
 };

@@ -128,6 +128,15 @@ export default {
       default: LIMIT,
       optional: true,
     },
+    // Start task run options
+    paidPlan: {
+      type: "boolean",
+      label: "Paid plan",
+      description: "Indicates whether the current user is on a paid plan. Paid plans allow longer execution times for this step. If set to true but the user is actually on a Free plan, the step will fail.",
+      optional: false,
+      default: false,
+      reloadProps: true,
+    },
   },
   methods: {
     _client() {
@@ -153,10 +162,10 @@ export default {
         .delete();
     },
     runActor({
-      actorId, data, params,
+      actorId, input, options,
     }) {
       return this._client().actor(actorId)
-        .call(data, params);
+        .call(input, options);
     },
     getActorRun({ runId }) {
       return this._client().run(runId)
@@ -258,6 +267,16 @@ export default {
         return `${title} (${username}/${name})`;
       }
       return `${username}/${name}`;
+    },
+    /*
+      @returns Maximum request duration limit
+      @description Individual steps execution can take up to 30 seconds,
+      if the user is not on a paid plan, otherwise timeout it is set to 300 seconds.
+    */
+    getRequestTimeout(isPaidPlan = false) {
+      return isPaidPlan
+        ? 298
+        : 28;
     },
   },
 };

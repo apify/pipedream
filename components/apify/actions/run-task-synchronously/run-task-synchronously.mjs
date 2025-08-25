@@ -20,12 +20,10 @@ export default {
     },
     // Start task run options
     paidPlan: {
-      type: "boolean",
-      label: "Paid plan",
-      description: "Indicates whether the current user is on a paid plan. Paid plans allow longer execution times for this step. If set to true but the user is actually on a Free plan, the step will fail.",
-      optional: false,
-      default: false,
-      reloadProps: true,
+      propDefinition: [
+        apify,
+        "paidPlan",
+      ],
     },
     timeout: {
       type: "integer",
@@ -85,7 +83,7 @@ export default {
         label: "Waiting time (seconds)",
         description: "Specifies how long to wait for the run to complete. If not set, the wait time defaults to the Pipedream’s platform limits (up to 300 seconds for the whole step execution).",
         optional: true,
-        default: 280,
+        default: this.apify.getRequestTimeout(true),
       };
     }
     return props;
@@ -109,7 +107,7 @@ export default {
         timeout: this.timeout,
         memory: this.memory,
         build: this.build,
-        waitSecs: this.waitSecs ?? 28, // up to 30 seconds for a whole step execution if not on a paid plan
+        waitSecs: this.waitSecs ?? this.apify.getRequestTimeout(),
       },
     });
 
