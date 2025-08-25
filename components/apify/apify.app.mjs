@@ -255,10 +255,13 @@ export default {
         .call({}, params);
     },
     setKeyValueStoreRecord({
-      storeId, recordKey, data,
+      storeId, key, value,
     }) {
       return this._client().keyValueStore(storeId)
-        .setRecord(recordKey, data);
+        .setRecord({
+          key,
+          value,
+        });
     },
     formatActorOrTaskLabel({
       title, username, name,
