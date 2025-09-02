@@ -191,14 +191,34 @@ export default {
           optional: !requiredProps.includes(key),
         };
 
+        if (props[key].type === "string" && value.isSecret) {
+          props[key].secret = value.isSecret;
+        } else if (props[key].type === "integer") {
+          props[key].min = value.minimum;
+          props[key].max = value.maximum;
+          if (value.unit) {
+            props[key].description += ` Unit: ${value.unit}.`;
+          }
+        } else if (props[key].type === "boolean") {
+          // Default all boolean properties to false
+          props[key].default = false;
+        }
+
         const options = this.prepareOptions(value);
         if (options) props[key].options = options;
 
-        if (value.default) {
-          props[key].description += ` Default: \`${JSON.stringify(value.default)}\``;
+        const defaultValue = value.default ?? value.prefill;
+
+        if (defaultValue) {
           if (props[key].type !== "object") {
-            props[key].default = value.default;
+            props[key].default = defaultValue;
+
+            if (props[key].type === "string[]" && value.editor === "requestListSources") {
+              props[key].default = defaultValue.map((request) => request.url);
+            }
           }
+
+          props[key].description += ` Default: \`${JSON.stringify(defaultValue)}\``;
         }
       }
     } catch (e) {
