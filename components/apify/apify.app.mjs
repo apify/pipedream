@@ -128,15 +128,6 @@ export default {
       default: LIMIT,
       optional: true,
     },
-    // Start task run options
-    paidPlan: {
-      type: "boolean",
-      label: "Paid plan",
-      description: "Indicates whether the current user is on a paid plan. Paid plans allow longer execution times for this step. If set to true but the user is actually on a Free plan, the step will fail.",
-      optional: false,
-      default: false,
-      reloadProps: true,
-    },
   },
   methods: {
     _client() {
