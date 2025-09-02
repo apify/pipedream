@@ -336,11 +336,7 @@ export default {
 
       $.export(
         "$summary",
-        `The ran of an Actor with ID: ${actorId} has finished with status "${run.status}", retrieved ${
-          output
-            ? "OUTPUT"
-            : "no output"
-        }`,
+        `The run of an Actor with ID: ${actorId} has finished with status "${run.status}".`,
       );
 
       return {
