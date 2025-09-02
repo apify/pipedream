@@ -1,7 +1,5 @@
 import apify from "../../apify.app.mjs";
-import {
-  ACTOR_JOB_STATUSES, ACTOR_JOB_TERMINAL_STATUSES,
-} from "@apify/consts";
+import { ACTOR_JOB_STATUSES } from "@apify/consts";
 
 export default {
   key: "apify-run-task-synchronously",
@@ -17,13 +15,6 @@ export default {
         "taskId",
       ],
       description: "The ID of the task to run",
-    },
-    // Start task run options
-    paidPlan: {
-      propDefinition: [
-        apify,
-        "paidPlan",
-      ],
     },
     timeout: {
       type: "integer",
@@ -75,19 +66,6 @@ export default {
       ],
     },
   },
-  async additionalProps() {
-    const props = {};
-    if (this.paidPlan) {
-      props.waitSecs = {
-        type: "integer",
-        label: "Waiting time (seconds)",
-        description: "Specifies how long to wait for the run to complete. If not set, the wait time defaults to the Pipedream’s platform limits (up to 300 seconds for the whole step execution).",
-        optional: true,
-        default: this.apify.getRequestTimeout(true),
-      };
-    }
-    return props;
-  },
   async run({ $ }) {
     const {
       status,
@@ -107,32 +85,25 @@ export default {
         timeout: this.timeout,
         memory: this.memory,
         build: this.build,
-        waitSecs: this.waitSecs ?? this.apify.getRequestTimeout(),
       },
     });
 
-    const datasetItems = [];
-
-    if (ACTOR_JOB_TERMINAL_STATUSES.includes(status)) {
-      if (status !== ACTOR_JOB_STATUSES.SUCCEEDED) {
-        throw new Error(`Run has finished with status: ${status}. Inspect it here: ${consoleUrl}`);
-      }
-      const { items } = await this.apify.listDatasetItems({
-        datasetId: defaultDatasetId,
-        params: {
-          clean: this.clean,
-          fields: this.fields && this.fields.join(),
-          omit: this.omit && this.omit.join(),
-          flatten: this.flatten && this.flatten.join(),
-          limit: this.limit,
-        },
-      });
-      datasetItems.push(...items);
-    } else {
-      throw new Error(`The run did not finish in time (${status}): waiting for run to finish timed out or Pipedream platform limitation were reached. To retrieve the items reliably, chain this step with a Get Dataset Items step.`);
+    if (status !== ACTOR_JOB_STATUSES.SUCCEEDED) {
+      throw new Error(`Run has finished with status: ${status}. Inspect it here: ${consoleUrl}`);
     }
 
-    $.export("$summary", `Run with task id ${this.taskId} finished successfully. Retrieved ${datasetItems.length} dataset items.`);
+    const { items } = await this.apify.listDatasetItems({
+      datasetId: defaultDatasetId,
+      params: {
+        clean: this.clean,
+        fields: this.fields && this.fields.join(),
+        omit: this.omit && this.omit.join(),
+        flatten: this.flatten && this.flatten.join(),
+        limit: this.limit,
+      },
+    });
+
+    $.export("$summary", `Run with task id ${this.taskId} finished successfully.`);
     return {
       runId: id,
       actId,
@@ -143,7 +114,7 @@ export default {
       defaultKeyValueStoreId,
       defaultDatasetId,
       defaultRequestQueueId,
-      datasetItems,
+      items,
     };
   },
 };
