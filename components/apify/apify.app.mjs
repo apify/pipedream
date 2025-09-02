@@ -271,15 +271,5 @@ export default {
       }
       return `${username}/${name}`;
     },
-    /*
-      @returns Maximum request duration limit
-      @description Individual steps execution can take up to 30 seconds,
-      if the user is not on a paid plan, otherwise timeout it is set to 300 seconds.
-    */
-    getRequestTimeout(isPaidPlan = false) {
-      return isPaidPlan
-        ? 298
-        : 28;
-    },
   },
 };
