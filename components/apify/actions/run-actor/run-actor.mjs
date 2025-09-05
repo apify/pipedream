@@ -207,9 +207,9 @@ export default {
         const options = this.prepareOptions(value);
         if (options) props[key].options = options;
 
-        const defaultValue = value.default ?? value.prefill;
+        const defaultValue = value.prefill ?? value.default;
 
-        if (defaultValue) {
+        if (defaultValue !== undefined) {
           if (props[key].type !== "object") {
             props[key].default = defaultValue;
 
