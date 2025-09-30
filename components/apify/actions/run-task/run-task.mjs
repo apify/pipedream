@@ -6,6 +6,10 @@ export default {
   name: "Run Task Synchronously",
   description: "Run a specific task and return its dataset items. [See the documentation](https://docs.apify.com/api/v2/actor-task-run-sync-get-dataset-items-get)",
   version: "0.0.4",
+  key: "apify-run-task",
+  name: "Run Task",
+  description: "Run a specific task and optionally return its dataset items. [See the documentation](https://docs.apify.com/api/v2/actor-task-run-sync-get-dataset-items-get)",
+  version: "0.0.5",
   type: "action",
   props: {
     apify,

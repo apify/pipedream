@@ -10,7 +10,7 @@ const props = adjustPropDefinitions(others.props, app);
 
 export default {
   ...others,
-  key: "apify_oauth-run-task-synchronously",
+  key: "apify_oauth-run-task",
   version: "0.0.1",
   name,
   description,
