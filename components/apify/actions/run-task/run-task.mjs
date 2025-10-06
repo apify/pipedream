@@ -20,6 +20,22 @@ export default {
       ],
       description: "The ID of the task to run",
     },
+
+    waitForFinish: {
+      type: "boolean",
+      label: "Wait for finish",
+      description:
+                "If false, returns immediately after starting the task. If true, waits for task completion (via webhook or polling) and returns dataset items.",
+      default: true,
+    },
+
+    // Apify run params
+    overrideInput: {
+      type: "string",
+      label: "Override Input",
+      description: "Optional JSON string to override the default input for the task run. Must be valid JSON.",
+      optional: true,
+    },
     timeout: {
       type: "integer",
       label: "Timeout",
