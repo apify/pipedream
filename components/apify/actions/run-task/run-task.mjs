@@ -246,7 +246,7 @@ export default {
     const { resume_url } = $.flow.suspend(POLL_WINDOW_MS); // 1-day timeout for task run to finish
 
     // Create a webhook pointing to resume_url
-    const webhook = await this.apify.createWebhook({
+    const webhook = await this.apify.createHook({
       requestUrl: resume_url,
       eventTypes: [
         WEBHOOK_EVENT_TYPES.ACTOR_RUN_SUCCEEDED,

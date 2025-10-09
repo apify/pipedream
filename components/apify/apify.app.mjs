@@ -163,11 +163,6 @@ export default {
       return this._client().actor(actorId)
         .call(input, options);
     },
-    createWebhook(opts = {}) {
-      return this._client().webhooks()
-        .create(opts);
-    },
-
     getRun({ runId }) {
       return this._client().run(runId)
         .get();
