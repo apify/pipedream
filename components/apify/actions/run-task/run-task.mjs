@@ -18,7 +18,6 @@ export default {
       ],
       description: "The ID of the task to run",
     },
-
     waitForFinish: {
       type: "boolean",
       label: "Wait for finish",
@@ -26,8 +25,6 @@ export default {
                 "If false, returns immediately after starting the task. If true, waits for task completion (via webhook or polling) and returns dataset items.",
       default: true,
     },
-
-    // Apify run params
     overrideInput: {
       type: "string",
       label: "Override Input",
@@ -52,37 +49,6 @@ export default {
       description: "Specifies the Actor build to run. It can be either a build tag or build number. By default, the run uses the build specified in the task settings (typically latest).",
       optional: true,
     },
-    // Retrieve dataset output option
-    clean: {
-      propDefinition: [
-        apify,
-        "clean",
-      ],
-    },
-    fields: {
-      propDefinition: [
-        apify,
-        "fields",
-      ],
-    },
-    omit: {
-      propDefinition: [
-        apify,
-        "omit",
-      ],
-    },
-    flatten: {
-      propDefinition: [
-        apify,
-        "flatten",
-      ],
-    },
-    limit: {
-      propDefinition: [
-        apify,
-        "limit",
-      ],
-    },
   },
 
   async run({ $ }) {
@@ -94,7 +60,7 @@ export default {
       try {
         input = JSON.parse(this.overrideInput);
       } catch (error) {
-        throw new Error(`Failed pro parse override Input JSON: ${error.message}`);
+        throw new Error(`Failed to parse override Input JSON: ${error.message}`);
       }
     }
 
@@ -111,53 +77,29 @@ export default {
       });
     };
 
-    // Helper: fetch run + dataset items if succeeded
-    const fetchOutcome = async (runId) => {
-      const run = await this.apify.getRun({
-        runId,
-      });
-      const status = run.status;
+    // Helper: delete webhook
+    const deleteWebhook = async (webhookId) => {
+      if (!webhookId) return;
 
-      if (status !== ACTOR_JOB_STATUSES.SUCCEEDED) {
-        return {
-          status,
-          run,
-          items: [],
-        };
+      try {
+        await this.apify.deleteHook(webhookId);
+      } catch (webhookError) {
+        console.warn("Failed to delete webhook (non-critical):", webhookError.message);
       }
-
-      let items = [];
-      if (run.defaultDatasetId) {
-        const ds = await this.apify.listDatasetItems({
-          datasetId: run.defaultDatasetId,
-          params: {
-            clean: this.clean,
-            fields: this.fields,
-            omit: this.omit,
-            flatten: this.flatten,
-            limit: this.limit,
-          },
-        });
-        items = ds.items || [];
-      }
-      return {
-        status,
-        run,
-        items,
-      };
     };
 
     // Helper: schedule next poll (rerun) with 30s interval and 1-day cap
-    const schedulePoll = (runId) => {
+    const schedulePoll = (runId, webhookId) => {
       const startEpoch =
                 ($.context.run?.context && $.context.run.context.pollStartMs) ||
                 $.context.pollStartMs ||
                 Date.now();
 
-      // Persist the poll start time across reruns
+      // Persist the poll start time and webhook ID across reruns
       $.flow.rerun(POLL_INTERVAL_MS, {
         apifyRunId: runId,
         pollStartMs: startEpoch,
+        webhookId,
       });
     };
 
@@ -189,6 +131,10 @@ export default {
                 rerunContext.apifyRunId ||
                 $.context.apifyRunId;
 
+      const webhookId =
+                rerunContext.webhookId ||
+                $.context.webhookId;
+
       if (!runId) {
         throw new Error("Missing runId on rerun/resume.");
       }
@@ -197,31 +143,32 @@ export default {
       const pollStartMs = rerunContext.pollStartMs || $.context.pollStartMs || Date.now();
       const elapsed = Date.now() - pollStartMs;
       if (elapsed > POLL_WINDOW_MS) {
+        // Clean up webhook before timing out
+        await deleteWebhook(webhookId);
         throw new Error(
           `Polling window exceeded (>${POLL_WINDOW_MS} ms). Task did not finish in time.`,
         );
       }
 
       // Try to fetch an outcome
-      const {
-        status, run, items,
-      } = await fetchOutcome(runId);
+      const run = await this.apify.getRun({
+        runId,
+      });
+      const { status } = run;
 
       // If finished
       if (ACTOR_JOB_TERMINAL_STATUSES.includes(status)) {
+        // Clean up webhook
+        await deleteWebhook(webhookId);
+
         // If finished successfully
         if (status === ACTOR_JOB_STATUSES.SUCCEEDED) {
           $.export(
             "$summary",
-            `Task ${this.taskId} succeeded with ${items.length} items`,
+            `Task ${this.taskId} succeeded.`,
           );
 
-          return {
-            runId: run.id,
-            status,
-            defaultDatasetId: run.defaultDatasetId,
-            items,
-          };
+          return run;
         }
 
         // If finished with an error status
@@ -231,7 +178,7 @@ export default {
       }
 
       // Still running: schedule another poll
-      schedulePoll(runId);
+      schedulePoll(runId, webhookId);
       return; // execution pauses until next rerun
     }
 
@@ -272,10 +219,14 @@ export default {
       description: `Pipedream auto-resume for task ${this.taskId} run ${started.id}`,
     });
 
+    if (!webhook?.id) {
+      throw new Error("Failed to create webhook - no ID returned");
+    }
+
     $.context.webhookId = webhook.id;
 
     // Fallback polling via rerun: every 30s, within a 1-day window
-    schedulePoll(started.id);
+    schedulePoll(started.id, webhook.id);
 
     // Execution suspends at $.flow.suspend; webhook or rerun will resume.
   },
