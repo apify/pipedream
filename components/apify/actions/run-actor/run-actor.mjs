@@ -7,7 +7,7 @@ export default {
   key: "apify-run-actor",
   name: "Run Actor",
   description: "Performs an execution of a selected Actor in Apify. [See the documentation](https://docs.apify.com/api/v2#/reference/actors/run-collection/run-actor)",
-  version: "0.0.5",
+  version: "0.0.6",
   type: "action",
   props: {
     apify,
@@ -132,14 +132,18 @@ export default {
       const newData = {};
       const { properties } = await this.getSchema(this.actorId, this.buildTag);
 
+      // Iterate over properties from the schema because newData might contain additional fields
       for (const [
         key,
         value,
-      ] of Object.entries(data)) {
-        const editor = properties[key]?.editor || "hidden";
-        newData[key] = Array.isArray(value)
-          ? value.map((item) => this.setValue(editor, item))
-          : value;
+      ] of Object.entries(properties)) {
+        const propValue = data[key];
+        if (propValue === undefined) continue;
+
+        const editor = value.editor || "hidden";
+        newData[key] = Array.isArray(propValue)
+          ? propValue.map((item) => this.setValue(editor, item))
+          : this.setValue(editor, propValue);
       }
       return newData;
     },
@@ -165,6 +169,8 @@ export default {
         return {
           glob: item,
         };
+      case "json":
+        return JSON.parse(item);
       default:
         return item;
       }
@@ -210,11 +216,15 @@ export default {
         const defaultValue = value.prefill ?? value.default;
 
         if (defaultValue !== undefined) {
-          if (props[key].type !== "object") {
-            props[key].default = defaultValue;
+          props[key].default = defaultValue;
 
-            if (props[key].type === "string[]" && value.editor === "requestListSources") {
+          if (props[key].type === "string[]") {
+            if (value.editor === "requestListSources") {
               props[key].default = defaultValue.map((request) => request.url);
+            }
+
+            if (value.editor === "json") {
+              props[key].default = defaultValue.map((item) => JSON.stringify(item));
             }
           }
 
