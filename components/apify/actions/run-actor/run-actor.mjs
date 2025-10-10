@@ -205,15 +205,12 @@ export default {
           if (value.unit) {
             props[key].description += ` Unit: ${value.unit}.`;
           }
-        } else if (props[key].type === "boolean") {
-          // Default all boolean properties to false
-          props[key].default = false;
         }
 
         const options = this.prepareOptions(value);
         if (options) props[key].options = options;
 
-        const defaultValue = value.prefill ?? value.default;
+        const defaultValue = value.prefill;
 
         if (defaultValue !== undefined) {
           props[key].default = defaultValue;
