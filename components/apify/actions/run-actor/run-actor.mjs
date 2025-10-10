@@ -210,6 +210,9 @@ export default {
         const options = this.prepareOptions(value);
         if (options) props[key].options = options;
 
+        // We're using prefill here as a suggestion for the user. Using default value would be
+        // redundant as the default value is inserted by the Apify platform.
+        // More info: https://docs.apify.com/platform/actors/development/actor-definition/input-schema/specification/v1#prefill-vs-default-vs-required
         const defaultValue = value.prefill;
 
         if (defaultValue !== undefined) {
