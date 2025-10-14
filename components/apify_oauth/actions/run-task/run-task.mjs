@@ -1,5 +1,5 @@
 import app from "../../apify_oauth.app.mjs";
-import common from "@pipedream/apify/actions/run-task-synchronously/run-task-synchronously.mjs";
+import common from "@pipedream/apify/actions/run-task/run-task.mjs";
 
 import { adjustPropDefinitions } from "../../common/utils.mjs";
 
