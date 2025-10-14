@@ -6,8 +6,8 @@ import {
 export default {
   key: "apify-run-task",
   name: "Run Task",
-  description: "Run a specific task and optionally return its dataset items. [See the documentation](https://docs.apify.com/api/v2/actor-task-run-sync-get-dataset-items-get)",
-  version: "0.0.5",
+  description: "Run a specific task and optionally wait for it's termination.",
+  version: "0.0.1",
   type: "action",
   props: {
     apify,
