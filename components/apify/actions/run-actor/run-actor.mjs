@@ -226,7 +226,6 @@ export default {
             }
 
             if (value.editor === "json" || value.editor === "schemaBased") {
-              console.log("defaultValue", defaultValue);
               props[key].default = defaultValue.map((item) => JSON.stringify(item));
             }
           }
