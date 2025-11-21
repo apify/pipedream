@@ -32,18 +32,10 @@ export default {
         page, actorSource,
       }) {
         actorSource ??= "recently-used";
-        const listFn = actorSource === "store"
-          ? this.listActors
-          : this.listUserActors;
-        const { items } = await listFn({
-          offset: LIMIT * page,
-          limit: LIMIT,
+        return await this.getActorOptions({
+          page,
+          actorSource,
         });
-
-        return items.map((actor) => ({
-          label: this.formatActorOrTaskLabel(actor),
-          value: actor.id,
-        }));
       },
     },
     taskId: {
@@ -148,6 +140,23 @@ export default {
           }),
         ],
       });
+    },
+    async getActorOptions({
+      page = 0, actorSource = "recently-used",
+    }) {
+      const listFn = actorSource === "store"
+        ? this.listActors
+        : this.listUserActors;
+
+      const { items } = await listFn({
+        offset: LIMIT * page,
+        limit: LIMIT,
+      });
+
+      return items.map((actor) => ({
+        label: this.formatActorOrTaskLabel(actor),
+        value: actor.id,
+      }));
     },
     getAuthToken() {
       return this.$auth.api_token;
