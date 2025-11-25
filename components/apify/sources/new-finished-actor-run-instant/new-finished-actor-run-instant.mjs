@@ -33,9 +33,6 @@ export default {
     },
   },
   additionalProps() {
-    console.log("=== additionalProps DEBUG ===");
-    console.log("apify.propDefinitions:", apify.propDefinitions);
-
     const props = {};
 
     if (this.actorSource) {
