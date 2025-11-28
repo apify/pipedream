@@ -226,7 +226,6 @@ export default {
     listUserActors(opts = {}) {
       return this._client().actors()
         .list({
-          my: true,
           sortBy: "stats.lastRunStartedAt",
           desc: true,
           ...opts,
