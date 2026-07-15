@@ -139,8 +139,16 @@ export default {
       );
     },
     async prepareData(data) {
+      let schema;
+      try {
+        schema = await this.getSchema(this.actorId, this.buildTag);
+      } catch {
+        // Actor has no input schema: send the raw input (defaults to {}) as-is.
+        return data;
+      }
+
       const newData = {};
-      const { properties } = await this.getSchema(this.actorId, this.buildTag);
+      const { properties } = schema;
 
       // Iterate over properties from the schema because newData might contain additional fields
       for (const [
@@ -149,6 +157,15 @@ export default {
       ] of Object.entries(properties)) {
         const propValue = data[key];
         if (propValue === undefined) continue;
+
+        // Numeric fields must be sent as numbers, not strings (fractional
+        // "number" props render as string inputs; see additionalProps()).
+        if (value.type === "number" || value.type === "integer") {
+          newData[key] = Array.isArray(propValue)
+            ? propValue.map((item) => Number(item))
+            : Number(propValue);
+          continue;
+        }
 
         const editor = value.editor || "hidden";
         newData[key] = Array.isArray(propValue)
