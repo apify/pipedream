@@ -95,6 +95,8 @@ export default {
   },
   methods: {
     getType(type) {
+      // Apify "number" -> Pipedream "integer"; fractional cases handled in additionalProps().
+      if (type === "number") return "integer";
       return [
         "string",
         "object",
@@ -103,6 +105,9 @@ export default {
       ].includes(type)
         ? type
         : "string[]";
+    },
+    isFractional(num) {
+      return typeof num === "number" && !Number.isInteger(num);
     },
     async getSchema(actorId, buildTag) {
       const build = await this.apify.getBuild(actorId, buildTag);
@@ -203,6 +208,19 @@ export default {
           description: value.description,
           optional: !requiredProps.includes(key),
         };
+
+        // Fractional number props fall back to string; coerced in prepareData().
+        if (
+          value.type === "number" &&
+          [
+            value.minimum,
+            value.maximum,
+            value.prefill,
+            value.default,
+          ].some((n) => this.isFractional(n))
+        ) {
+          props[key].type = "string";
+        }
 
         if (props[key].type === "string" && value.isSecret) {
           props[key].secret = value.isSecret;
