@@ -273,11 +273,13 @@ export default {
           props[key].description += ` Default: \`${JSON.stringify(defaultValue)}\``;
         }
       }
-    } catch (e) {
+    } catch {
       props.properties = {
         type: "object",
         label: "Properties",
-        description: e.message || "Schema not available, showing fallback.",
+        description: "This Actor has no input schema. Provide a raw JSON input object, or leave it empty to run the Actor with its own defaults.",
+        optional: true,
+        default: {},
       };
     }
 
