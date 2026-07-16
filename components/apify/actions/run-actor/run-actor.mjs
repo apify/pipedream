@@ -10,7 +10,7 @@ export default {
   key: "apify-run-actor",
   name: "Run Actor",
   description: "Performs an execution of a selected Actor in Apify. [See the documentation](https://docs.apify.com/api/v2#/reference/actors/run-collection/run-actor)",
-  version: "0.0.7",
+  version: "0.0.8",
   annotations: {
     destructiveHint: false,
     openWorldHint: true,
@@ -395,20 +395,20 @@ export default {
         options: params,
       });
 
-      // Fetch OUTPUT record manually
+      // Fetch OUTPUT record and guard its size before returning it inline.
       let output;
       if (run.defaultKeyValueStoreId) {
-        const record = await apify
-          ._client()
-          .keyValueStore(run.defaultKeyValueStoreId)
-          .getRecord(outputRecordKey);
-
-        output = record?.value;
+        const record = await apify.getKVSRecord(run.defaultKeyValueStoreId, outputRecordKey);
+        output = this.capOutputRecord(record, run.defaultKeyValueStoreId, outputRecordKey);
       }
 
+      const capped = output?.truncated === true;
       $.export(
         "$summary",
-        `The run of an Actor with ID: ${actorId} has finished with status "${run.status}".`,
+        `The run of an Actor with ID: ${actorId} has finished with status "${run.status}".`
+          + (capped
+            ? " OUTPUT was too large to return inline; a reference URL is included."
+            : ""),
       );
 
       return {
