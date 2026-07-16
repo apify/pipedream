@@ -18,8 +18,8 @@ function makeCtx(overrides = {}) {
 describe("getType", () => {
   const { getType } = methods;
 
-  it("maps Apify \"number\" to Pipedream \"integer\"", () => {
-    expect(getType("number")).toBe("integer");
+  it("maps Apify \"number\" to Pipedream \"string\" (no float type)", () => {
+    expect(getType("number")).toBe("string");
   });
 
   it("passes through supported primitive types", () => {
@@ -32,22 +32,6 @@ describe("getType", () => {
   it("falls back to \"string[]\" for unknown types", () => {
     expect(getType("array")).toBe("string[]");
     expect(getType(undefined)).toBe("string[]");
-  });
-});
-
-describe("isFractional", () => {
-  const { isFractional } = methods;
-
-  it("is true only for non-integer numbers", () => {
-    expect(isFractional(3.5)).toBe(true);
-    expect(isFractional(-0.1)).toBe(true);
-  });
-
-  it("is false for integers and non-numbers", () => {
-    expect(isFractional(3)).toBe(false);
-    expect(isFractional(0)).toBe(false);
-    expect(isFractional(undefined)).toBe(false);
-    expect(isFractional("2.5")).toBe(false);
   });
 });
 
@@ -230,12 +214,36 @@ describe("setValue", () => {
 });
 
 describe("additionalProps", () => {
-  it("renders an integer-bounded \"number\" field as an integer prop", async () => {
+  it("renders an Apify \"number\" field as a string prop (no float type in Pipedream)", async () => {
+    const ctx = makeCtx({
+      getSchema: async () => ({
+        properties: {
+          ratio: {
+            type: "number",
+            title: "Ratio",
+            description: "A decimal value",
+            minimum: 0.5,
+            maximum: 10,
+          },
+        },
+        required: [
+          "ratio",
+        ],
+      }),
+    });
+    const props = await component.additionalProps.call(ctx);
+    expect(props.ratio.type).toBe("string");
+    expect(props.ratio.optional).toBe(false);
+    expect(props.ratio.min).toBeUndefined();
+    expect(props.ratio.max).toBeUndefined();
+  });
+
+  it("renders an Apify \"integer\" field with min/max as an integer prop", async () => {
     const ctx = makeCtx({
       getSchema: async () => ({
         properties: {
           count: {
-            type: "number",
+            type: "integer",
             title: "Count",
             description: "How many",
             minimum: 1,
@@ -252,27 +260,6 @@ describe("additionalProps", () => {
     expect(props.count.min).toBe(1);
     expect(props.count.max).toBe(10);
     expect(props.count.optional).toBe(false);
-  });
-
-  it("falls back to a string prop when a \"number\" field has fractional bounds", async () => {
-    const ctx = makeCtx({
-      getSchema: async () => ({
-        properties: {
-          ratio: {
-            type: "number",
-            title: "Ratio",
-            description: "A fraction",
-            minimum: 0.5,
-          },
-        },
-        required: [],
-      }),
-    });
-    const props = await component.additionalProps.call(ctx);
-    expect(props.ratio.type).toBe("string");
-    // The integer min/max block must be skipped for the string fallback.
-    expect(props.ratio.min).toBeUndefined();
-    expect(props.ratio.max).toBeUndefined();
   });
 
   it("produces a friendly, usable fallback prop when the Actor has no schema", async () => {
