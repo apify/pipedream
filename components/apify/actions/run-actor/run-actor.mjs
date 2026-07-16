@@ -3,6 +3,9 @@ import apify from "../../apify.app.mjs";
 import { parseObject } from "../../common/utils.mjs";
 import { WEBHOOK_EVENT_TYPES } from "@apify/consts";
 
+// Max OUTPUT record size (bytes) returned inline; oversized values get a reference object.
+const MAX_OUTPUT_BYTES = 256 * 1024;
+
 export default {
   key: "apify-run-actor",
   name: "Run Actor",
@@ -94,6 +97,33 @@ export default {
     },
   },
   methods: {
+    outputByteSize(value) {
+      if (value == null) return 0;
+      if (Buffer.isBuffer(value)) return value.length;
+      if (typeof value === "string") return Buffer.byteLength(value);
+      try {
+        return Buffer.byteLength(JSON.stringify(value));
+      } catch {
+        // Unserializable (e.g. circular) -> treat as oversized so we never return it inline.
+        return Infinity;
+      }
+    },
+    capOutputRecord(record, keyValueStoreId, recordKey) {
+      if (!record || record.value == null) return undefined;
+      const size = this.outputByteSize(record.value);
+      if (size <= MAX_OUTPUT_BYTES) return record.value;
+      return {
+        truncated: true,
+        message:
+          "The OUTPUT record exceeds the safe step-output size and was not returned inline. " +
+          "Retrieve it via `recordUrl`, or use the Get Key-Value Store Record action.",
+        keyValueStoreId,
+        recordKey,
+        contentType: record.contentType,
+        size,
+        recordUrl: this.apify.getKVSRecordUrl(keyValueStoreId, recordKey),
+      };
+    },
     getType(type) {
       return [
         "string",
