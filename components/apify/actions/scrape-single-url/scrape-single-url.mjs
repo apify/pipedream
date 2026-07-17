@@ -1,6 +1,7 @@
 import apify from "../../apify.app.mjs";
 import { WCC_ACTOR_ID } from "../../common/constants.mjs";
 import { ACTOR_JOB_STATUSES } from "@apify/consts";
+import { ConfigurationError } from "@pipedream/platform";
 
 export default {
   key: "apify-scrape-single-url",
@@ -43,6 +44,26 @@ export default {
     },
   },
   async run({ $ }) {
+    const url = this.url?.trim();
+
+    let parsedUrl;
+    try {
+      parsedUrl = new URL(url);
+    } catch {
+      throw new ConfigurationError(`The provided **URL** is not valid: \`${this.url}\`. Enter a full URL including the protocol, e.g. \`https://example.com\`.`);
+    }
+
+    if (![
+      "http:",
+      "https:",
+    ].includes(parsedUrl.protocol)) {
+      throw new ConfigurationError(`The **URL** must use the \`http\` or \`https\` protocol: \`${this.url}\`.`);
+    }
+
+    if (parsedUrl.hostname.split(".").some((label) => label.length === 0)) {
+      throw new ConfigurationError(`The **URL** has an invalid host: \`${this.url}\`.`);
+    }
+
     const {
       status,
       defaultDatasetId,
@@ -56,7 +77,7 @@ export default {
         maxResults: 1,
         startUrls: [
           {
-            url: this.url,
+            url,
           },
         ],
       },
