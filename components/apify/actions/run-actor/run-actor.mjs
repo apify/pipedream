@@ -108,7 +108,7 @@ export default {
         return Infinity;
       }
     },
-    capOutputRecord(record, keyValueStoreId, recordKey) {
+    async capOutputRecord(record, keyValueStoreId, recordKey) {
       if (record?.value == null) return undefined;
       const size = this.outputByteSize(record.value);
       if (size <= MAX_OUTPUT_BYTES) return record.value;
@@ -121,7 +121,9 @@ export default {
         recordKey,
         contentType: record.contentType,
         size,
-        recordUrl: this.apify.getKVSRecordUrl(keyValueStoreId, recordKey),
+        // getKVSRecordUrl -> apify-client getRecordPublicUrl is async; must await or the
+        // unresolved Promise serializes to `{}` in the step output.
+        recordUrl: await this.apify.getKVSRecordUrl(keyValueStoreId, recordKey),
       };
     },
     getType(type) {
@@ -399,7 +401,7 @@ export default {
       let output;
       if (run.defaultKeyValueStoreId) {
         const record = await apify.getKVSRecord(run.defaultKeyValueStoreId, outputRecordKey);
-        output = this.capOutputRecord(record, run.defaultKeyValueStoreId, outputRecordKey);
+        output = await this.capOutputRecord(record, run.defaultKeyValueStoreId, outputRecordKey);
       }
 
       const capped = output?.truncated === true;
