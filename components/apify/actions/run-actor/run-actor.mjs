@@ -109,7 +109,7 @@ export default {
       }
     },
     capOutputRecord(record, keyValueStoreId, recordKey) {
-      if (!record || record.value == null) return undefined;
+      if (record?.value == null) return undefined;
       const size = this.outputByteSize(record.value);
       if (size <= MAX_OUTPUT_BYTES) return record.value;
       return {
