@@ -43,26 +43,31 @@ export default {
       default: "playwright:firefox",
     },
   },
+  methods: {
+  // new URL() accepts hosts with empty labels (e.g. "google..com"), so check explicitly
+    validateUrl(url) {
+      let parsedUrl;
+      try {
+        parsedUrl = new URL(url);
+      } catch {
+        throw new ConfigurationError(`Invalid URL "${url}": could not be parsed. Use a valid absolute URL like https://example.com.`);
+      }
+
+      if (![
+        "http:",
+        "https:",
+      ].includes(parsedUrl.protocol)) {
+        throw new ConfigurationError(`Invalid URL "${url}": only http and https protocols are supported. Use a valid absolute URL like https://example.com.`);
+      }
+
+      if (parsedUrl.hostname.split(".").some((label) => label.length === 0)) {
+        throw new ConfigurationError(`Invalid URL "${url}": host contains an empty label. Use a valid absolute URL like https://example.com.`);
+      }
+    },
+  },
   async run({ $ }) {
     const url = this.url?.trim();
-
-    let parsedUrl;
-    try {
-      parsedUrl = new URL(url);
-    } catch {
-      throw new ConfigurationError(`The provided **URL** is not valid: \`${this.url}\`. Enter a full URL including the protocol, e.g. \`https://example.com\`.`);
-    }
-
-    if (![
-      "http:",
-      "https:",
-    ].includes(parsedUrl.protocol)) {
-      throw new ConfigurationError(`The **URL** must use the \`http\` or \`https\` protocol: \`${this.url}\`.`);
-    }
-
-    if (parsedUrl.hostname.split(".").some((label) => label.length === 0)) {
-      throw new ConfigurationError(`The **URL** has an invalid host: \`${this.url}\`.`);
-    }
+    this.validateUrl(url);
 
     const {
       status,
@@ -91,7 +96,7 @@ export default {
       datasetId: defaultDatasetId,
     });
 
-    $.export("$summary", "Run of Web Content Crawler finished successfully.");
+    $.export("$summary", "Scraped the URL successfully.");
     return items[0];
   },
 };
