@@ -6,7 +6,7 @@ import {
 export default {
   key: "apify-run-task",
   name: "Run Task",
-  description: "Run a specific task and optionally wait for it's termination.",
+  description: "Run a specific task and optionally wait for its termination.",
   version: "0.0.5",
   annotations: {
     destructiveHint: false,
