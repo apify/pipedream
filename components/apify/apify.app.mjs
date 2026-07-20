@@ -267,12 +267,6 @@ export default {
       return this._client().keyValueStore(kvsId)
         .getRecordPublicUrl(recordKey);
     },
-    runTaskSynchronously({
-      taskId, params, input,
-    }) {
-      return this._client().task(taskId)
-        .call(input, params);
-    },
     setKeyValueStoreRecord({
       storeId, key, value, contentType,
     }) {
