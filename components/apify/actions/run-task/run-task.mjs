@@ -7,7 +7,12 @@ export default {
   key: "apify-run-task",
   name: "Run Task",
   description: "Run a specific task and optionally wait for it's termination.",
-  version: "0.0.4",
+  version: "0.0.5",
+  annotations: {
+    destructiveHint: false,
+    openWorldHint: true,
+    readOnlyHint: false,
+  },
   type: "action",
   props: {
     apify,
@@ -30,13 +35,13 @@ export default {
     },
     overrideInput: {
       type: "string",
-      label: "Override Input",
-      description: "Optional JSON string to override the default input for the task run. Must be valid JSON.",
+      label: "Override Input (JSON)",
+      description: "Optional JSON object to override the task's saved input for this run. Leave empty to use the task's saved input. Must be valid JSON (e.g. `{}` for empty input).",
       optional: true,
     },
     timeout: {
       type: "integer",
-      label: "Timeout",
+      label: "Timeout (seconds)",
       description: "Optional timeout for the run, in seconds. By default, the run uses a timeout specified in the task settings.",
       optional: true,
     },
