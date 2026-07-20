@@ -105,6 +105,33 @@ test("empty dataset returns [] with a single request and no summary", async () =
   expect(exported["$summary"]).toBeUndefined();
 });
 
+test("username/dataset-name is normalized to the tilde form the API expects", async () => {
+  const {
+    run, spy,
+  } = makeContext(dataset(10), {
+    datasetId: "myuser/my-dataset",
+    limit: 1,
+  });
+  await run();
+  expect(spy.calls[0].datasetId).toBe("myuser~my-dataset");
+});
+
+test("a raw dataset ID or tilde form is passed through unchanged", async () => {
+  const idCase = makeContext(dataset(10), {
+    datasetId: "WkzbQMuFYuamGv3YF",
+    limit: 1,
+  });
+  await idCase.run();
+  expect(idCase.spy.calls[0].datasetId).toBe("WkzbQMuFYuamGv3YF");
+
+  const tildeCase = makeContext(dataset(10), {
+    datasetId: "myuser~my-dataset",
+    limit: 1,
+  });
+  await tildeCase.run();
+  expect(tildeCase.spy.calls[0].datasetId).toBe("myuser~my-dataset");
+});
+
 test("clean, fields and omit are forwarded to listDatasetItems", async () => {
   const {
     run, spy,

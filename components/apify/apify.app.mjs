@@ -62,7 +62,7 @@ export default {
     datasetId: {
       type: "string",
       label: "Dataset ID",
-      description: "Select a dataset, or enter a Dataset ID or `username~dataset-name`",
+      description: "Select a dataset, or enter a Dataset ID or `username/dataset-name`",
       async options({ page }) {
         const { items } = await this.listDatasets({
           offset: LIMIT * page,

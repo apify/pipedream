@@ -53,8 +53,11 @@ export default {
   },
   async run({ $ }) {
     const {
-      datasetId, clean, fields, omit, limit,
+      clean, fields, omit, limit,
     } = this;
+    // The Apify API path accepts `username~dataset-name`; accept the friendlier
+    // `username/dataset-name` form too by normalizing the separator to a tilde.
+    const datasetId = this.datasetId?.replace("/", "~");
     const offset = this.offset ?? 0;
 
     const results = [];
