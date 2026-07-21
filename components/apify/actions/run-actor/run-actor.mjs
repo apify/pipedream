@@ -107,7 +107,7 @@ export default {
     async getSchema(actorId, buildTag) {
       const build = await this.apify.getBuild(actorId, buildTag);
       if (!build) {
-        throw new Error(`No build found for actor ${actorId}`);
+        throw new Error(`No build found for Actor ${actorId}`);
       }
 
       // Case 1: schema is already an object
@@ -123,14 +123,14 @@ export default {
             : build.inputSchema;
         } catch (err) {
           throw new Error(
-            `Failed to parse inputSchema for actor ${actorId}: ${err.message}`,
+            `Failed to parse inputSchema for Actor ${actorId}: ${err.message}`,
           );
         }
       }
 
       // Case 3: no schema at all
       throw new Error(
-        `No input schema found for actor ${actorId}. Has it been built successfully?`,
+        `No input schema found for Actor ${actorId}. Has it been built successfully?`,
       );
     },
     async prepareData(data) {
@@ -303,7 +303,7 @@ export default {
       const taggedBuilds = actorDetails.taggedBuilds || {};
       if (!taggedBuilds[buildTag]) {
         throw new Error(
-          `Build with tag "${buildTag}" was not found for actor "${actorDetails.title || actorDetails.name}".`,
+          `Build with tag "${buildTag}" was not found for Actor "${actorDetails.title || actorDetails.name}".`,
         );
       }
     }

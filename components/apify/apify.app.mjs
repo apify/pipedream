@@ -231,7 +231,7 @@ export default {
           .get();
       } else {
         throw new Error(
-          `Actor ${actorId} has no build tagged "${buildTag}". Please build the actor first.`,
+          `Actor ${actorId} has no build tagged "${buildTag}". Please build the Actor first.`,
         );
       }
     },
