@@ -54,10 +54,10 @@ export default {
       reloadProps: true,
       optional: true,
     },
-    runAsynchronously: {
+    waitForFinish: {
       type: "boolean",
-      label: "Run Asynchronously",
-      description: "Set to `true` to run the Actor asynchronously",
+      label: "Wait for Finish",
+      description: "If `true` (default), the step waits for the Actor run to finish and returns its output. If `false`, the step starts the run and returns immediately with the run details, without waiting.",
       reloadProps: true,
       default: true,
     },
@@ -246,7 +246,7 @@ export default {
       };
     }
 
-    if (!this.runAsynchronously) {
+    if (this.waitForFinish) {
       props.outputRecordKey = {
         type: "string",
         label: "Output Record Key",
@@ -273,7 +273,7 @@ export default {
       apify,
       actorId,
       buildTag,
-      runAsynchronously,
+      waitForFinish,
       outputRecordKey,
       timeout,
       memory,
@@ -347,8 +347,8 @@ export default {
 
     let run;
 
-    if (runAsynchronously) {
-      // async run
+    if (!waitForFinish) {
+      // async run — start and return immediately without waiting
       run = await apify.runActorAsynchronously({
         actorId,
         data: input,
