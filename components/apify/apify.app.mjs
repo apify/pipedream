@@ -240,7 +240,7 @@ export default {
       return this._client().actor(actorId)
         .get();
     },
-    async getBuild(actorId, buildTag) {
+    async getBuild(actorId, buildRef) {
       // Get actor details
       const actor = await this._client().actor(actorId)
         .get();
@@ -249,20 +249,32 @@ export default {
         throw new Error(`Actor ${actorId} not found.`);
       }
 
-      if (!buildTag) {
-        buildTag = actor.defaultRunOptions.build;
+      if (!buildRef) {
+        buildRef = actor.defaultRunOptions.build;
       }
 
-      const { taggedBuilds } = actor;
+      const taggedBuilds = actor.taggedBuilds ?? {};
 
-      if (taggedBuilds[buildTag]) {
-        return this._client().build(taggedBuilds[buildTag].buildId)
+      // Resolve by build tag (e.g. `latest`).
+      if (taggedBuilds[buildRef]?.buildId) {
+        return this._client().build(taggedBuilds[buildRef].buildId)
           .get();
-      } else {
-        throw new Error(
-          `Actor ${actorId} has no build tagged "${buildTag}". Please build the actor first.`,
-        );
       }
+
+      // Fallback: resolve by build number (e.g. `0.1.2`) from the builds list.
+      const { items: builds = [] } = await this.listBuilds({
+        actorId,
+      });
+      const build = builds.find(({ buildNumber }) => buildNumber === buildRef);
+
+      if (build) {
+        return this._client().build(build.id)
+          .get();
+      }
+
+      throw new Error(
+        `Actor ${actorId} has no build tagged or numbered "${buildRef}". Please build the actor first or pick an existing build.`,
+      );
     },
     listActors(opts = {}) {
       return this._client().store()
