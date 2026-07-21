@@ -295,7 +295,7 @@ export default {
 
     if (!actorDetails.stats?.totalBuilds || actorDetails.stats.totalBuilds === 0) {
       throw new Error(
-        `Actor "${actorDetails.title || actorDetails.name}" has no builds. Please build it first before running.`,
+        `Actor "${actorDetails.title || actorDetails.name}" has no builds yet and can't be run until it's built. Open the Actor in Apify Console and build it (Source → Code → Build), or trigger a build via the Apify CLI/API, then run this step again.`,
       );
     }
 
