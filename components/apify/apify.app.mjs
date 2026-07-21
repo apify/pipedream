@@ -29,7 +29,7 @@ export default {
     actorId: {
       type: "string",
       label: "Actor",
-      description: "Select the Actor, enter the Actor ID, or use a tilde-separated combination of the owner's username and the Actor name.",
+      description: "Select an Actor from the dropdown, enter an Actor ID, or use a tilde-separated owner/name identifier (e.g. `apify~web-scraper`). If the list is empty, switch \"Search Actors from\" to **Apify Store Actors**.",
       async options({
         page, actorSource,
       }) {
@@ -157,6 +157,17 @@ export default {
         offset: LIMIT * page,
         limit: LIMIT,
       });
+
+      if (actorSource !== "store" && page === 0 && items.length === 0) {
+        const { items: storeItems } = await this.listActors({
+          offset: 0,
+          limit: LIMIT,
+        });
+        return storeItems.map((actor) => ({
+          label: this.formatActorOrTaskLabel(actor),
+          value: actor.id,
+        }));
+      }
 
       return items.map((actor) => ({
         label: this.formatActorOrTaskLabel(actor),
