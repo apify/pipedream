@@ -1,4 +1,3 @@
-import { ACTOR_JOB_STATUSES } from "@apify/consts";
 import { LIMIT } from "./common/constants.mjs";
 import { ApifyClient } from "apify-client";
 
@@ -82,54 +81,25 @@ export default {
     buildTag: {
       type: "string",
       label: "Build",
-      description: "Actor build to run. Accepts a build tag (e.g. `latest`) or build number (e.g. `0.1.2`). Defaults to the Actor's default build.",
+      description: "Actor build to run. Pick a tag from the list or enter a build number (e.g. `0.1.2`). Defaults to the Actor's default build.",
       async options({ actorId }) {
         if (!actorId) {
           return [];
         }
 
-        const [
-          buildsResult,
-          actor,
-        ] = await Promise.all([
-          this.listBuilds({
-            actorId,
-          }),
-          this.getActor({
-            actorId,
-          }),
-        ]);
+        const { taggedBuilds = {} } = await this.getActor({
+          actorId,
+        });
 
-        const builds = buildsResult?.items ?? [];
-        const taggedBuilds = actor?.taggedBuilds ?? {};
-
-        // Map build number -> tag names pointing at it (e.g. "latest", "beta").
-        const tagsByBuildNumber = {};
-        for (const [
+        return Object.entries(taggedBuilds).map(([
           tag,
           info,
-        ] of Object.entries(taggedBuilds)) {
-          if (info?.buildNumber) {
-            tagsByBuildNumber[info.buildNumber] ??= [];
-            tagsByBuildNumber[info.buildNumber].push(tag);
-          }
-        }
-
-        // Newest first. `buildNumberInt` is returned by the REST API for reliable
-        // ordering even though the apify-client type omits it.
-        return builds
-          .filter((build) => build.status === ACTOR_JOB_STATUSES.SUCCEEDED)
-          .sort((a, b) => (b.buildNumberInt ?? 0) - (a.buildNumberInt ?? 0))
-          .map((build) => {
-            const tags = tagsByBuildNumber[build.buildNumber];
-            const tagLabel = tags?.length
-              ? ` (${tags.join(", ")})`
-              : "";
-            return {
-              label: `${build.buildNumber}${tagLabel}`,
-              value: build.buildNumber,
-            };
-          });
+        ]) => ({
+          label: info?.buildNumber
+            ? `${tag} (${info.buildNumber})`
+            : tag,
+          value: tag,
+        }));
       },
     },
     clean: {
@@ -240,8 +210,7 @@ export default {
       return this._client().actor(actorId)
         .get();
     },
-    async getBuild(actorId, buildRef) {
-      // Get actor details
+    async resolveBuildId(actorId, buildRef) {
       const actor = await this._client().actor(actorId)
         .get();
 
@@ -255,26 +224,27 @@ export default {
 
       const taggedBuilds = actor.taggedBuilds ?? {};
 
-      // Resolve by build tag (e.g. `latest`).
       if (taggedBuilds[buildRef]?.buildId) {
-        return this._client().build(taggedBuilds[buildRef].buildId)
-          .get();
+        return taggedBuilds[buildRef].buildId;
       }
 
-      // Fallback: resolve by build number (e.g. `0.1.2`) from the builds list.
       const { items: builds = [] } = await this.listBuilds({
         actorId,
       });
-      const build = builds.find(({ buildNumber }) => buildNumber === buildRef);
+      const match = builds.find(({ buildNumber }) => buildNumber === buildRef);
 
-      if (build) {
-        return this._client().build(build.id)
-          .get();
+      if (match) {
+        return match.id;
       }
 
       throw new Error(
-        `Actor ${actorId} has no build tagged or numbered "${buildRef}". Please build the actor first or pick an existing build.`,
+        `No build with tag or number "${buildRef}" found for actor ${actorId}.`,
       );
+    },
+    async getBuild(actorId, buildRef) {
+      const buildId = await this.resolveBuildId(actorId, buildRef);
+      return this._client().build(buildId)
+        .get();
     },
     listActors(opts = {}) {
       return this._client().store()

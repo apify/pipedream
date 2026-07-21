@@ -7,7 +7,7 @@ export default {
   key: "apify-run-actor",
   name: "Run Actor",
   description: "Performs an execution of a selected Actor in Apify. [See the documentation](https://docs.apify.com/api/v2#/reference/actors/run-collection/run-actor)",
-  version: "0.0.7",
+  version: "0.0.8",
   annotations: {
     destructiveHint: false,
     openWorldHint: true,
@@ -300,12 +300,7 @@ export default {
     }
 
     if (buildTag) {
-      const taggedBuilds = actorDetails.taggedBuilds || {};
-      if (!taggedBuilds[buildTag]) {
-        throw new Error(
-          `Build with tag "${buildTag}" was not found for actor "${actorDetails.title || actorDetails.name}".`,
-        );
-      }
+      await apify.resolveBuildId(actorId, buildTag);
     }
 
     // Prepare input
