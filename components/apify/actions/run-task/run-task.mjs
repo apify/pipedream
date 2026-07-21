@@ -8,7 +8,7 @@ export default {
   key: "apify-run-task",
   name: "Run Task",
   description: "Run a specific task and optionally wait for it's termination.",
-  version: "0.0.5",
+  version: "0.0.6",
   annotations: {
     destructiveHint: false,
     openWorldHint: true,

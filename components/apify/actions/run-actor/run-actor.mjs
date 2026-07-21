@@ -186,10 +186,13 @@ export default {
     },
     prepareOptions(value) {
       if (value.enum && value.enumTitles) {
-        return value.enum.map((val, i) => ({
-          value: val,
-          label: value.enumTitles[i],
-        }));
+        // Drop options with an empty or null label
+        return value.enum
+          .map((val, i) => ({
+            value: val,
+            label: value.enumTitles[i],
+          }))
+          .filter(({ label }) => label !== "" && label != null);
       }
     },
     setValue(editor, item) {
