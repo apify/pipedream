@@ -1,4 +1,5 @@
 import apify from "../../apify.app.mjs";
+import { MEMORY_MBYTES_OPTIONS } from "../../common/constants.mjs";
 import {
   ACTOR_JOB_STATUSES, ACTOR_JOB_TERMINAL_STATUSES, WEBHOOK_EVENT_TYPES,
 } from "@apify/consts";
@@ -7,7 +8,12 @@ export default {
   key: "apify-run-task",
   name: "Run Task",
   description: "Run a specific task and optionally wait for it's termination.",
-  version: "0.0.4",
+  version: "0.0.5",
+  annotations: {
+    destructiveHint: false,
+    openWorldHint: true,
+    readOnlyHint: false,
+  },
   type: "action",
   props: {
     apify,
@@ -42,9 +48,10 @@ export default {
     },
     memory: {
       type: "integer",
-      label: "Memory",
-      description: "Memory limit for the run, in megabytes. The amount of memory can be set to a power of 2 with a minimum of 128. By default, the run uses a memory limit specified in the task settings.",
+      label: "Memory (MB)",
+      description: "Memory limit for the run, in megabytes. Must be a power of two between 128 MB and 32 GB. By default, the run uses the memory limit specified in the task settings.",
       optional: true,
+      options: MEMORY_MBYTES_OPTIONS,
     },
     build: {
       type: "string",
