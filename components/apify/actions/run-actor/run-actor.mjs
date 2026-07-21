@@ -1,13 +1,16 @@
 /* eslint-disable no-unused-vars */
 import apify from "../../apify.app.mjs";
 import { parseObject } from "../../common/utils.mjs";
+import {
+  MEMORY_MBYTES_OPTIONS, MIN_MEMORY_MBYTES, MAX_MEMORY_MBYTES,
+} from "../../common/constants.mjs";
 import { WEBHOOK_EVENT_TYPES } from "@apify/consts";
 
 export default {
   key: "apify-run-actor",
   name: "Run Actor",
   description: "Performs an execution of a selected Actor in Apify. [See the documentation](https://docs.apify.com/api/v2#/reference/actors/run-collection/run-actor)",
-  version: "0.0.7",
+  version: "0.0.8",
   annotations: {
     destructiveHint: false,
     openWorldHint: true,
@@ -67,12 +70,6 @@ export default {
       description: "Optional timeout for the run, in seconds. By default, the run uses a timeout specified in the default run configuration for the Actor.",
       optional: true,
     },
-    memory: {
-      type: "string",
-      label: "Memory (MB)",
-      description: "Memory limit for the run, in megabytes. The amount of memory can be set to a power of 2 with a minimum of 128. By default, the run uses a memory limit specified in the default run configuration for the Actor.",
-      optional: true,
-    },
     maxItems: {
       type: "string",
       label: "Max Items",
@@ -104,12 +101,14 @@ export default {
         ? type
         : "string[]";
     },
-    async getSchema(actorId, buildTag) {
+    async getBuildOrThrow(actorId, buildTag) {
       const build = await this.apify.getBuild(actorId, buildTag);
       if (!build) {
         throw new Error(`No build found for actor ${actorId}`);
       }
-
+      return build;
+    },
+    extractInputSchema(build, actorId) {
       // Case 1: schema is already an object
       if (build.actorDefinition && build.actorDefinition.input) {
         return build.actorDefinition.input;
@@ -133,9 +132,42 @@ export default {
         `No input schema found for actor ${actorId}. Has it been built successfully?`,
       );
     },
-    async prepareData(data) {
+    async getSchema(actorId, buildTag) {
+      const build = await this.getBuildOrThrow(actorId, buildTag);
+      return this.extractInputSchema(build, actorId);
+    },
+    // Reads the Actor's declared memory limits from an already-fetched build,
+    // falling back to the platform limits (128 MB - 32 GB) when not declared.
+    getMemoryLimits(build) {
+      const {
+        minMemoryMbytes, maxMemoryMbytes,
+      } = build?.actorDefinition ?? {};
+      return {
+        min: Number.isInteger(minMemoryMbytes)
+          ? minMemoryMbytes
+          : MIN_MEMORY_MBYTES,
+        max: Number.isInteger(maxMemoryMbytes)
+          ? maxMemoryMbytes
+          : MAX_MEMORY_MBYTES,
+      };
+    },
+    buildMemoryProp({
+      min, max,
+    }) {
+      const options = MEMORY_MBYTES_OPTIONS.filter(({ value }) => value >= min && value <= max);
+      return {
+        type: "integer",
+        label: "Memory (MB)",
+        description: "Memory limit for the run, in megabytes. Must be a power of two between 128 MB and 32 GB. By default, the run uses the memory limit specified in the Actor's default run configuration.",
+        optional: true,
+        options: options.length
+          ? options
+          : MEMORY_MBYTES_OPTIONS,
+      };
+    },
+    async prepareData(data, schema) {
       const newData = {};
-      const { properties } = await this.getSchema(this.actorId, this.buildTag);
+      const { properties } = schema ?? await this.getSchema(this.actorId, this.buildTag);
 
       // Iterate over properties from the schema because newData might contain additional fields
       for (const [
@@ -185,8 +217,14 @@ export default {
   },
   async additionalProps() {
     const props = {};
+    let memoryLimits = {
+      min: MIN_MEMORY_MBYTES,
+      max: MAX_MEMORY_MBYTES,
+    };
     try {
-      const schema = await this.getSchema(this.actorId, this.buildTag);
+      const build = await this.getBuildOrThrow(this.actorId, this.buildTag);
+      memoryLimits = this.getMemoryLimits(build);
+      const schema = this.extractInputSchema(build, this.actorId);
       const {
         properties, required: requiredProps = [],
       } = schema;
@@ -245,6 +283,11 @@ export default {
         description: e.message || "Schema not available, showing fallback.",
       };
     }
+
+    // Ordered memory dropdown (128 MB - 32 GB), filtered to the Actor's
+    // declared min/max memory when present. Declared here (not in static props)
+    // so it can honor the per-Actor limits read from the fetched build.
+    props.memory = this.buildMemoryProp(memoryLimits);
 
     if (!this.runAsynchronously) {
       props.outputRecordKey = {
@@ -308,6 +351,26 @@ export default {
       }
     }
 
+    // Fetch the build once and reuse it for both the input schema and the
+    // Actor's declared memory limits (avoids adding a second build fetch).
+    const build = await this.getBuildOrThrow(actorId, buildTag);
+    const schema = this.extractInputSchema(build, actorId);
+    const {
+      min: minMemory, max: maxMemory,
+    } = this.getMemoryLimits(build);
+
+    // Defensive memory validation. The dropdown already filters valid options
+    // at configuration time; this guards against stale or injected values.
+    if (memory !== undefined && memory !== null && memory !== "") {
+      const mem = Number(memory);
+      const isValidStep = MEMORY_MBYTES_OPTIONS.some(({ value }) => value === mem);
+      if (!isValidStep || mem < minMemory || mem > maxMemory) {
+        throw new Error(
+          `Memory ${memory} MB is not valid for Actor "${actorDetails.title || actorDetails.name}". It must be a power of two between ${minMemory} and ${maxMemory} MB.`,
+        );
+      }
+    }
+
     // Prepare input
     // Use data (dynamic props from schema) if it has any keys,
     // otherwise fall back to this.properties (fallback object prop)
@@ -316,7 +379,7 @@ export default {
       : (this.properties
         ? parseObject(this.properties)
         : {});
-    const input = await this.prepareData(rawInput);
+    const input = await this.prepareData(rawInput, schema);
 
     // Build params safely
     const params = {
