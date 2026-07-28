@@ -47,7 +47,7 @@ export default {
     },
     memory: {
       type: "integer",
-      label: "Memory",
+      label: "Memory (MB)",
       description: "Memory limit for the run, in megabytes. The amount of memory can be set to a power of 2 with a minimum of 128. By default, the run uses a memory limit specified in the task settings.",
       optional: true,
     },
