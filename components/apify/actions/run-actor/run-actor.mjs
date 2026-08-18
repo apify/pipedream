@@ -4,6 +4,9 @@ import { parseObject } from "../../common/utils.mjs";
 import { WEBHOOK_EVENT_TYPES } from "@apify/consts";
 import { ConfigurationError } from "@pipedream/platform";
 
+// Max OUTPUT record size (bytes) returned inline; oversized values get a reference object.
+const MAX_OUTPUT_BYTES = 256 * 1024;
+
 export default {
   key: "apify-run-actor",
   name: "Run Actor",
@@ -95,6 +98,51 @@ export default {
     },
   },
   methods: {
+    outputByteSize(value) {
+      if (value == null) return 0;
+      if (Buffer.isBuffer(value)) return value.length;
+      if (typeof value === "string") return Buffer.byteLength(value);
+      try {
+        return Buffer.byteLength(JSON.stringify(value));
+      } catch {
+        // Unserializable (e.g. circular) -> treat as oversized so we never return it inline.
+        return Infinity;
+      }
+    },
+    // Returns { output, capped }: `capped` tells run() explicitly whether the value was
+    // replaced by a reference, so it never has to infer capping from the value's own shape
+    // (an Actor OUTPUT could legitimately contain a `truncated` field).
+    async capOutputRecord(record, keyValueStoreId, recordKey) {
+      if (record?.value == null) {
+        return {
+          output: undefined,
+          capped: false,
+        };
+      }
+      const size = this.outputByteSize(record.value);
+      if (size <= MAX_OUTPUT_BYTES) {
+        return {
+          output: record.value,
+          capped: false,
+        };
+      }
+      return {
+        capped: true,
+        output: {
+          truncated: true,
+          message:
+            "The OUTPUT record exceeds the safe step-output size and was not returned inline. " +
+            "Retrieve it via `recordUrl`, or use the Get Key-Value Store Record action.",
+          keyValueStoreId,
+          recordKey,
+          contentType: record.contentType,
+          size,
+          // getKVSRecordUrl -> apify-client getRecordPublicUrl is async; must await or the
+          // unresolved Promise serializes to `{}` in the step output.
+          recordUrl: await this.apify.getKVSRecordUrl(keyValueStoreId, recordKey),
+        },
+      };
+    },
     getType(type) {
       // Pipedream has no float type, so numbers are input as strings
       if (type === "number") return "string";
@@ -406,20 +454,21 @@ export default {
         options: params,
       });
 
-      // Fetch OUTPUT record manually
+      // Fetch OUTPUT record and guard its size before returning it inline.
       let output;
+      let capped = false;
       if (run.defaultKeyValueStoreId) {
-        const record = await apify
-          ._client()
-          .keyValueStore(run.defaultKeyValueStoreId)
-          .getRecord(outputRecordKey);
-
-        output = record?.value;
+        const record = await apify.getKVSRecord(run.defaultKeyValueStoreId, outputRecordKey);
+        ({
+          output, capped,
+        } = await this.capOutputRecord(record, run.defaultKeyValueStoreId, outputRecordKey));
       }
-
       $.export(
         "$summary",
-        `The run of an Actor with ID: ${actorId} has finished with status "${run.status}".`,
+        `The run of an Actor with ID: ${actorId} has finished with status "${run.status}".`
+          + (capped
+            ? " OUTPUT was too large to return inline; a reference URL is included."
+            : ""),
       );
 
       return {
