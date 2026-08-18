@@ -2,6 +2,7 @@
 import apify from "../../apify.app.mjs";
 import { parseObject } from "../../common/utils.mjs";
 import { WEBHOOK_EVENT_TYPES } from "@apify/consts";
+import { ConfigurationError } from "@pipedream/platform";
 
 // Max OUTPUT record size (bytes) returned inline; oversized values get a reference object.
 const MAX_OUTPUT_BYTES = 256 * 1024;
@@ -143,6 +144,8 @@ export default {
       };
     },
     getType(type) {
+      // Pipedream has no float type, so numbers are input as strings
+      if (type === "number") return "string";
       return [
         "string",
         "object",
@@ -151,6 +154,15 @@ export default {
       ].includes(type)
         ? type
         : "string[]";
+    },
+    parseNumericInput(value, key) {
+      const num = Number(value);
+      if (value == null || value === "" || Number.isNaN(num)) {
+        throw new ConfigurationError(
+          `Input "${key}" must be a valid number, but received: ${JSON.stringify(value)}.`,
+        );
+      }
+      return num;
     },
     async getSchema(actorId, buildTag) {
       const build = await this.apify.getBuild(actorId, buildTag);
@@ -176,14 +188,27 @@ export default {
         }
       }
 
-      // Case 3: no schema at all
-      throw new Error(
+      // Case 3: no schema at all (e.g. apify/hello-world)
+      const noSchemaError = new Error(
         `No input schema found for actor ${actorId}. Has it been built successfully?`,
       );
+      noSchemaError.noInputSchema = true;
+      throw noSchemaError;
     },
     async prepareData(data) {
+      let schema;
+      try {
+        schema = await this.getSchema(this.actorId, this.buildTag);
+      } catch (err) {
+        // Actor has no input schema: send the raw input (defaults to {}) as-is.
+        if (err?.noInputSchema) {
+          return data;
+        }
+        throw err;
+      }
+
       const newData = {};
-      const { properties } = await this.getSchema(this.actorId, this.buildTag);
+      const { properties } = schema;
 
       // Iterate over properties from the schema because newData might contain additional fields
       for (const [
@@ -192,6 +217,15 @@ export default {
       ] of Object.entries(properties)) {
         const propValue = data[key];
         if (propValue === undefined) continue;
+
+        if (value.type === "number" || value.type === "integer") {
+          if (Array.isArray(propValue)) {
+            newData[key] = propValue.map((item) => this.parseNumericInput(item, key));
+          } else if (propValue !== "") {
+            newData[key] = this.parseNumericInput(propValue, key);
+          }
+          continue;
+        }
 
         const editor = value.editor || "hidden";
         newData[key] = Array.isArray(propValue)
@@ -287,10 +321,15 @@ export default {
         }
       }
     } catch (e) {
+      if (!e?.noInputSchema) {
+        throw e;
+      }
       props.properties = {
         type: "object",
         label: "Properties",
-        description: e.message || "Schema not available, showing fallback.",
+        description: "This Actor has no input schema. Provide a raw JSON input object, or leave it empty to run the Actor with its own defaults.",
+        optional: true,
+        default: {},
       };
     }
 
@@ -329,6 +368,7 @@ export default {
       maxTotalChargeUsd,
       webhook,
       eventTypes,
+      properties,
       ...data
     } = this;
 
@@ -359,11 +399,12 @@ export default {
     // Prepare input
     // Use data (dynamic props from schema) if it has any keys,
     // otherwise fall back to this.properties (fallback object prop)
+    const fallback = properties
+      ? parseObject(properties)
+      : {};
     const rawInput = Object.keys(data).length > 0
       ? data
-      : (this.properties
-        ? parseObject(this.properties)
-        : {});
+      : fallback;
     const input = await this.prepareData(rawInput);
 
     // Build params safely
