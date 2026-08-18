@@ -62,7 +62,7 @@ export default {
     datasetId: {
       type: "string",
       label: "Dataset ID",
-      description: "The ID of the dataset to retrieve items within",
+      description: "Select a dataset, or enter a Dataset ID or `username/dataset-name`",
       async options({ page }) {
         const { items } = await this.listDatasets({
           offset: LIMIT * page,
@@ -119,15 +119,15 @@ export default {
     limit: {
       type: "integer",
       label: "Limit",
-      description: "The maximum number of items to return",
-      default: LIMIT,
+      description: "The maximum number of items to return. Leave empty to return all items",
+      min: 1,
       optional: true,
     },
     offset: {
       type: "integer",
       label: "Offset",
-      description: "The number records to skip before returning results",
-      default: 0,
+      description: "The number of records to skip before returning results. Leave empty to start from the first item",
+      min: 0,
       optional: true,
     },
   },
