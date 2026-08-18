@@ -2,6 +2,7 @@
 import apify from "../../apify.app.mjs";
 import { parseObject } from "../../common/utils.mjs";
 import { WEBHOOK_EVENT_TYPES } from "@apify/consts";
+import { ConfigurationError } from "@pipedream/platform";
 
 export default {
   key: "apify-run-actor",
@@ -107,6 +108,15 @@ export default {
         ? type
         : "string[]";
     },
+    parseNumericInput(value, key) {
+      const num = Number(value);
+      if (value == null || value === "" || Number.isNaN(num)) {
+        throw new ConfigurationError(
+          `Input "${key}" must be a valid number, but received: ${JSON.stringify(value)}.`,
+        );
+      }
+      return num;
+    },
     async getSchema(actorId, buildTag) {
       const build = await this.apify.getBuild(actorId, buildTag);
       if (!build) {
@@ -156,12 +166,12 @@ export default {
         const propValue = data[key];
         if (propValue === undefined) continue;
 
-        // Numeric fields must be sent as numbers, not strings (fractional
-        // "number" props render as string inputs; see additionalProps()).
         if (value.type === "number" || value.type === "integer") {
-          newData[key] = Array.isArray(propValue)
-            ? propValue.map((item) => Number(item))
-            : Number(propValue);
+          if (Array.isArray(propValue)) {
+            newData[key] = propValue.map((item) => this.parseNumericInput(item, key));
+          } else if (propValue !== "") {
+            newData[key] = this.parseNumericInput(propValue, key);
+          }
           continue;
         }
 
