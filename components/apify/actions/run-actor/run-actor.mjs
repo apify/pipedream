@@ -388,12 +388,7 @@ export default {
     }
 
     if (buildTag) {
-      const taggedBuilds = actorDetails.taggedBuilds || {};
-      if (!taggedBuilds[buildTag]) {
-        throw new Error(
-          `Build with tag "${buildTag}" was not found for actor "${actorDetails.title || actorDetails.name}".`,
-        );
-      }
+      await apify.resolveBuildId(actorId, buildTag);
     }
 
     // Prepare input

@@ -81,15 +81,25 @@ export default {
     buildTag: {
       type: "string",
       label: "Build",
-      description: "Specifies the Actor build to run. The accepted value is the build tag. If not provided, the default build will be used.",
+      description: "Actor build to run. Pick a tag from the list or enter a build number (e.g. `0.1.2`). Defaults to the Actor's default build.",
       async options({ actorId }) {
-        const { taggedBuilds } = await this.getActor({
+        if (!actorId) {
+          return [];
+        }
+
+        const { taggedBuilds = {} } = await this.getActor({
           actorId,
         });
 
         return Object.entries(taggedBuilds).map(([
-          name,
-        ]) => name);
+          tag,
+          info,
+        ]) => ({
+          label: info?.buildNumber
+            ? `${tag} (${info.buildNumber})`
+            : tag,
+          value: tag,
+        }));
       },
     },
     clean: {
@@ -200,8 +210,7 @@ export default {
       return this._client().actor(actorId)
         .get();
     },
-    async getBuild(actorId, buildTag) {
-      // Get actor details
+    async resolveBuildId(actorId, buildRef) {
       const actor = await this._client().actor(actorId)
         .get();
 
@@ -209,20 +218,35 @@ export default {
         throw new Error(`Actor ${actorId} not found.`);
       }
 
-      if (!buildTag) {
-        buildTag = actor.defaultRunOptions.build;
+      if (!buildRef) {
+        buildRef = actor.defaultRunOptions.build;
       }
 
-      const { taggedBuilds } = actor;
+      const taggedBuilds = actor.taggedBuilds ?? {};
 
-      if (taggedBuilds[buildTag]) {
-        return this._client().build(taggedBuilds[buildTag].buildId)
-          .get();
-      } else {
-        throw new Error(
-          `Actor ${actorId} has no build tagged "${buildTag}". Please build the actor first.`,
-        );
+      if (taggedBuilds[buildRef]?.buildId) {
+        return taggedBuilds[buildRef].buildId;
       }
+
+      const { items: builds = [] } = await this.listBuilds({
+        actorId,
+        desc: true,
+        limit: LIMIT,
+      });
+      const match = builds.find(({ buildNumber }) => buildNumber === buildRef);
+
+      if (match) {
+        return match.id;
+      }
+
+      throw new Error(
+        `No build with tag or number "${buildRef}" found for actor ${actorId}.`,
+      );
+    },
+    async getBuild(actorId, buildRef) {
+      const buildId = await this.resolveBuildId(actorId, buildRef);
+      return this._client().build(buildId)
+        .get();
     },
     listActors(opts = {}) {
       return this._client().store()
@@ -240,10 +264,12 @@ export default {
       return this._client().tasks()
         .list(opts);
     },
-    listBuilds({ actorId }) {
+    listBuilds({
+      actorId, ...opts
+    }) {
       return this._client().actor(actorId)
         .builds()
-        .list();
+        .list(opts);
     },
     listKeyValueStores(opts = {}) {
       return this._client().keyValueStores()
