@@ -96,8 +96,7 @@ export default {
   },
   methods: {
     getType(type) {
-      // Apify "number" means floats are valid; Pipedream has no float type,
-      // so render as "string" and coerce to Number in prepareData().
+      // Pipedream has no float type, so numbers are input as strings
       if (type === "number") return "string";
       return [
         "string",
@@ -141,18 +140,23 @@ export default {
         }
       }
 
-      // Case 3: no schema at all
-      throw new Error(
+      // Case 3: no schema at all (e.g. apify/hello-world)
+      const noSchemaError = new Error(
         `No input schema found for actor ${actorId}. Has it been built successfully?`,
       );
+      noSchemaError.noInputSchema = true;
+      throw noSchemaError;
     },
     async prepareData(data) {
       let schema;
       try {
         schema = await this.getSchema(this.actorId, this.buildTag);
-      } catch {
+      } catch (err) {
         // Actor has no input schema: send the raw input (defaults to {}) as-is.
-        return data;
+        if (err?.noInputSchema) {
+          return data;
+        }
+        throw err;
       }
 
       const newData = {};
