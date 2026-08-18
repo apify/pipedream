@@ -230,6 +230,8 @@ export default {
 
       const { items: builds = [] } = await this.listBuilds({
         actorId,
+        desc: true,
+        limit: LIMIT,
       });
       const match = builds.find(({ buildNumber }) => buildNumber === buildRef);
 
@@ -262,10 +264,12 @@ export default {
       return this._client().tasks()
         .list(opts);
     },
-    listBuilds({ actorId }) {
+    listBuilds({
+      actorId, ...opts
+    }) {
       return this._client().actor(actorId)
         .builds()
-        .list();
+        .list(opts);
     },
     listKeyValueStores(opts = {}) {
       return this._client().keyValueStores()
