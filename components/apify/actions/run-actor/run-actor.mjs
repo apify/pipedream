@@ -272,7 +272,10 @@ export default {
           props[key].description += ` Default: \`${JSON.stringify(defaultValue)}\``;
         }
       }
-    } catch {
+    } catch (e) {
+      if (!e?.noInputSchema) {
+        throw e;
+      }
       props.properties = {
         type: "object",
         label: "Properties",
@@ -317,6 +320,7 @@ export default {
       maxTotalChargeUsd,
       webhook,
       eventTypes,
+      properties,
       ...data
     } = this;
 
@@ -347,11 +351,12 @@ export default {
     // Prepare input
     // Use data (dynamic props from schema) if it has any keys,
     // otherwise fall back to this.properties (fallback object prop)
+    const fallback = properties
+      ? parseObject(properties)
+      : {};
     const rawInput = Object.keys(data).length > 0
       ? data
-      : (this.properties
-        ? parseObject(this.properties)
-        : {});
+      : fallback;
     const input = await this.prepareData(rawInput);
 
     // Build params safely
