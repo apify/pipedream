@@ -7,8 +7,8 @@ import {
 export default {
   key: "apify-run-task",
   name: "Run Task",
-  description: "Run a specific task and optionally wait for it's termination.",
-  version: "0.0.6",
+  description: "Run a specific task and optionally wait for its termination.",
+  version: "0.0.5",
   annotations: {
     destructiveHint: false,
     openWorldHint: true,
@@ -36,20 +36,20 @@ export default {
     },
     overrideInput: {
       type: "string",
-      label: "Override Input",
-      description: "Optional JSON string to override the default input for the task run. Must be valid JSON.",
+      label: "Override Input (JSON)",
+      description: "Optional JSON object to override the task's saved input for this run. Leave empty to use the task's saved input. Must be valid JSON (e.g. `{}` for empty input).",
       optional: true,
     },
     timeout: {
       type: "integer",
-      label: "Timeout",
+      label: "Timeout (seconds)",
       description: "Optional timeout for the run, in seconds. By default, the run uses a timeout specified in the task settings.",
       optional: true,
     },
     memory: {
       type: "integer",
       label: "Memory (MB)",
-      description: "Memory limit for the run, in megabytes. Must be a power of two between 128 MB and 32 GB. By default, the run uses the memory limit specified in the task settings.",
+      description: "Memory limit for the run, in megabytes. The amount of memory can be set to a power of 2 with a minimum of 128. By default, the run uses a memory limit specified in the task settings.",
       optional: true,
       options: MEMORY_MBYTES_OPTIONS,
     },

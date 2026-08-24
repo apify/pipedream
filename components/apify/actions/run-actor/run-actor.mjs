@@ -5,6 +5,10 @@ import {
   MEMORY_MBYTES_OPTIONS, MIN_MEMORY_MBYTES, MAX_MEMORY_MBYTES,
 } from "../../common/constants.mjs";
 import { WEBHOOK_EVENT_TYPES } from "@apify/consts";
+import { ConfigurationError } from "@pipedream/platform";
+
+// Max OUTPUT record size (bytes) returned inline; oversized values get a reference object.
+const MAX_OUTPUT_BYTES = 256 * 1024;
 
 export default {
   key: "apify-run-actor",
@@ -91,7 +95,54 @@ export default {
     },
   },
   methods: {
+    outputByteSize(value) {
+      if (value == null) return 0;
+      if (Buffer.isBuffer(value)) return value.length;
+      if (typeof value === "string") return Buffer.byteLength(value);
+      try {
+        return Buffer.byteLength(JSON.stringify(value));
+      } catch {
+        // Unserializable (e.g. circular) -> treat as oversized so we never return it inline.
+        return Infinity;
+      }
+    },
+    // Returns { output, capped }: `capped` tells run() explicitly whether the value was
+    // replaced by a reference, so it never has to infer capping from the value's own shape
+    // (an Actor OUTPUT could legitimately contain a `truncated` field).
+    async capOutputRecord(record, keyValueStoreId, recordKey) {
+      if (record?.value == null) {
+        return {
+          output: undefined,
+          capped: false,
+        };
+      }
+      const size = this.outputByteSize(record.value);
+      if (size <= MAX_OUTPUT_BYTES) {
+        return {
+          output: record.value,
+          capped: false,
+        };
+      }
+      return {
+        capped: true,
+        output: {
+          truncated: true,
+          message:
+            "The OUTPUT record exceeds the safe step-output size and was not returned inline. " +
+            "Retrieve it via `recordUrl`, or use the Get Key-Value Store Record action.",
+          keyValueStoreId,
+          recordKey,
+          contentType: record.contentType,
+          size,
+          // getKVSRecordUrl -> apify-client getRecordPublicUrl is async; must await or the
+          // unresolved Promise serializes to `{}` in the step output.
+          recordUrl: await this.apify.getKVSRecordUrl(keyValueStoreId, recordKey),
+        },
+      };
+    },
     getType(type) {
+      // Pipedream has no float type, so numbers are input as strings
+      if (type === "number") return "string";
       return [
         "string",
         "object",
@@ -100,6 +151,15 @@ export default {
       ].includes(type)
         ? type
         : "string[]";
+    },
+    parseNumericInput(value, key) {
+      const num = Number(value);
+      if (value == null || value === "" || Number.isNaN(num)) {
+        throw new ConfigurationError(
+          `Input "${key}" must be a valid number, but received: ${JSON.stringify(value)}.`,
+        );
+      }
+      return num;
     },
     async getBuildOrThrow(actorId, buildTag) {
       const build = await this.apify.getBuild(actorId, buildTag);
@@ -127,17 +187,17 @@ export default {
         }
       }
 
-      // Case 3: no schema at all
-      throw new Error(
+      // Case 3: no schema at all (e.g. apify/hello-world)
+      const noSchemaError = new Error(
         `No input schema found for actor ${actorId}. Has it been built successfully?`,
       );
+      noSchemaError.noInputSchema = true;
+      throw noSchemaError;
     },
     async getSchema(actorId, buildTag) {
       const build = await this.getBuildOrThrow(actorId, buildTag);
       return this.extractInputSchema(build, actorId);
     },
-    // Reads the Actor's declared memory limits from an already-fetched build,
-    // falling back to the platform limits (128 MB - 32 GB) when not declared.
     getMemoryLimits(build) {
       const {
         minMemoryMbytes, maxMemoryMbytes,
@@ -166,8 +226,21 @@ export default {
       };
     },
     async prepareData(data, schema) {
+      let resolvedSchema = schema;
+      if (resolvedSchema === undefined) {
+        // No schema passed by the caller: fetch it, tolerating Actors with none.
+        try {
+          resolvedSchema = await this.getSchema(this.actorId, this.buildTag);
+        } catch (err) {
+          if (err?.noInputSchema) return data;
+          throw err;
+        }
+      }
+      // No input schema (e.g. apify/hello-world): send the raw input as-is.
+      if (!resolvedSchema) return data;
+
       const newData = {};
-      const { properties } = schema ?? await this.getSchema(this.actorId, this.buildTag);
+      const { properties } = resolvedSchema;
 
       // Iterate over properties from the schema because newData might contain additional fields
       for (const [
@@ -176,6 +249,15 @@ export default {
       ] of Object.entries(properties)) {
         const propValue = data[key];
         if (propValue === undefined) continue;
+
+        if (value.type === "number" || value.type === "integer") {
+          if (Array.isArray(propValue)) {
+            newData[key] = propValue.map((item) => this.parseNumericInput(item, key));
+          } else if (propValue !== "") {
+            newData[key] = this.parseNumericInput(propValue, key);
+          }
+          continue;
+        }
 
         const editor = value.editor || "hidden";
         newData[key] = Array.isArray(propValue)
@@ -280,10 +362,15 @@ export default {
         }
       }
     } catch (e) {
+      if (!e?.noInputSchema) {
+        throw e;
+      }
       props.properties = {
         type: "object",
         label: "Properties",
-        description: e.message || "Schema not available, showing fallback.",
+        description: "This Actor has no input schema. Provide a raw JSON input object, or leave it empty to run the Actor with its own defaults.",
+        optional: true,
+        default: {},
       };
     }
 
@@ -327,6 +414,7 @@ export default {
       maxTotalChargeUsd,
       webhook,
       eventTypes,
+      properties,
       ...data
     } = this;
 
@@ -346,21 +434,26 @@ export default {
     }
 
     if (buildTag) {
-      const taggedBuilds = actorDetails.taggedBuilds || {};
-      if (!taggedBuilds[buildTag]) {
-        throw new Error(
-          `Build with tag "${buildTag}" was not found for actor "${actorDetails.title || actorDetails.name}".`,
-        );
-      }
+      await apify.resolveBuildId(actorId, buildTag);
     }
 
     // Fetch the build once and reuse it for both the input schema and the
     // Actor's declared memory limits (avoids adding a second build fetch).
     const build = await this.getBuildOrThrow(actorId, buildTag);
-    const schema = this.extractInputSchema(build, actorId);
     const {
       min: minMemory, max: maxMemory,
     } = this.getMemoryLimits(build);
+
+    // Extract the input schema, tolerating Actors that have none (e.g.
+    // apify/hello-world), which run with the raw input passed through.
+    let schema = null;
+    try {
+      schema = this.extractInputSchema(build, actorId);
+    } catch (err) {
+      if (!err?.noInputSchema) {
+        throw err;
+      }
+    }
 
     // Defensive memory validation. The dropdown already filters valid options
     // at configuration time; this guards against stale or injected values.
@@ -377,11 +470,12 @@ export default {
     // Prepare input
     // Use data (dynamic props from schema) if it has any keys,
     // otherwise fall back to this.properties (fallback object prop)
+    const fallback = properties
+      ? parseObject(properties)
+      : {};
     const rawInput = Object.keys(data).length > 0
       ? data
-      : (this.properties
-        ? parseObject(this.properties)
-        : {});
+      : fallback;
     const input = await this.prepareData(rawInput, schema);
 
     // Build params safely
@@ -431,20 +525,21 @@ export default {
         options: params,
       });
 
-      // Fetch OUTPUT record manually
+      // Fetch OUTPUT record and guard its size before returning it inline.
       let output;
+      let capped = false;
       if (run.defaultKeyValueStoreId) {
-        const record = await apify
-          ._client()
-          .keyValueStore(run.defaultKeyValueStoreId)
-          .getRecord(outputRecordKey);
-
-        output = record?.value;
+        const record = await apify.getKVSRecord(run.defaultKeyValueStoreId, outputRecordKey);
+        ({
+          output, capped,
+        } = await this.capOutputRecord(record, run.defaultKeyValueStoreId, outputRecordKey));
       }
-
       $.export(
         "$summary",
-        `The run of an Actor with ID: ${actorId} has finished with status "${run.status}".`,
+        `The run of an Actor with ID: ${actorId} has finished with status "${run.status}".`
+          + (capped
+            ? " OUTPUT was too large to return inline; a reference URL is included."
+            : ""),
       );
 
       return {
