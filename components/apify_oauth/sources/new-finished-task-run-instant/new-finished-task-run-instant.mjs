@@ -11,7 +11,7 @@ const props = adjustPropDefinitions(others.props, app);
 export default {
   ...others,
   key: "apify_oauth-new-finished-task-run-instant",
-  version: "0.0.4",
+  version: "0.0.5",
   name,
   description,
   type,

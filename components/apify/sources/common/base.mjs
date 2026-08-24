@@ -60,13 +60,19 @@ export default {
         return;
       }
 
-      // Tolerate already-deleted webhooks so deactivate→activate cycles don't break.
       try {
         await this.apify.deleteHook(webhookId);
-      } catch (error) {
-        console.warn(`Failed to delete Apify webhook ${webhookId} (it may already be removed): ${error.message}`);
-      } finally {
+        // Forget the webhook after it's deleted.
         this.db.set("webhookId", null);
+      } catch (error) {
+        // Already removed on Apify; safe to forget.
+        if (error?.statusCode === 404) {
+          console.warn(`Apify webhook ${webhookId} was already removed; clearing stored id.`);
+          this.db.set("webhookId", null);
+          return;
+        }
+        // On other errors, keep the id and rethrow.
+        throw error;
       }
     },
   },
