@@ -2,8 +2,8 @@
 import apify from "../../apify.app.mjs";
 import { parseObject } from "../../common/utils.mjs";
 import {
-  MEMORY_MBYTES_OPTIONS, MIN_MEMORY_MBYTES, MAX_MEMORY_MBYTES,
-} from "../../common/constants.mjs";
+  getMemoryLimits, buildMemoryProp, validateMemory,
+} from "../../common/memory.mjs";
 import { WEBHOOK_EVENT_TYPES } from "@apify/consts";
 import { ConfigurationError } from "@pipedream/platform";
 
@@ -106,9 +106,7 @@ export default {
         return Infinity;
       }
     },
-    // Returns { output, capped }: `capped` tells run() explicitly whether the value was
-    // replaced by a reference, so it never has to infer capping from the value's own shape
-    // (an Actor OUTPUT could legitimately contain a `truncated` field).
+    // Returns { output, capped }, where capped indicates if the value was replaced by a reference.
     async capOutputRecord(record, keyValueStoreId, recordKey) {
       if (record?.value == null) {
         return {
@@ -170,7 +168,7 @@ export default {
     },
     extractInputSchema(build, actorId) {
       // Case 1: schema is already an object
-      if (build.actorDefinition && build.actorDefinition.input) {
+      if (build.actorDefinition?.input) {
         return build.actorDefinition.input;
       }
 
@@ -197,33 +195,6 @@ export default {
     async getSchema(actorId, buildTag) {
       const build = await this.getBuildOrThrow(actorId, buildTag);
       return this.extractInputSchema(build, actorId);
-    },
-    getMemoryLimits(build) {
-      const {
-        minMemoryMbytes, maxMemoryMbytes,
-      } = build?.actorDefinition ?? {};
-      return {
-        min: Number.isInteger(minMemoryMbytes)
-          ? minMemoryMbytes
-          : MIN_MEMORY_MBYTES,
-        max: Number.isInteger(maxMemoryMbytes)
-          ? maxMemoryMbytes
-          : MAX_MEMORY_MBYTES,
-      };
-    },
-    buildMemoryProp({
-      min, max,
-    }) {
-      const options = MEMORY_MBYTES_OPTIONS.filter(({ value }) => value >= min && value <= max);
-      return {
-        type: "integer",
-        label: "Memory (MB)",
-        description: "Memory limit for the run, in megabytes. Must be a power of two between 128 MB and 32 GB. By default, the run uses the memory limit specified in the Actor's default run configuration.",
-        optional: true,
-        options: options.length
-          ? options
-          : MEMORY_MBYTES_OPTIONS,
-      };
     },
     async prepareData(data, schema) {
       let resolvedSchema = schema;
@@ -302,13 +273,10 @@ export default {
   },
   async additionalProps() {
     const props = {};
-    let memoryLimits = {
-      min: MIN_MEMORY_MBYTES,
-      max: MAX_MEMORY_MBYTES,
-    };
+    let memoryLimits = getMemoryLimits();
     try {
       const build = await this.getBuildOrThrow(this.actorId, this.buildTag);
-      memoryLimits = this.getMemoryLimits(build);
+      memoryLimits = getMemoryLimits(build);
       const schema = this.extractInputSchema(build, this.actorId);
       const {
         properties, required: requiredProps = [],
@@ -374,10 +342,8 @@ export default {
       };
     }
 
-    // Ordered memory dropdown (128 MB - 32 GB), filtered to the Actor's
-    // declared min/max memory when present. Declared here (not in static props)
-    // so it can honor the per-Actor limits read from the fetched build.
-    props.memory = this.buildMemoryProp(memoryLimits);
+    // Actor memory dropdown, filtered by per-actor limits.
+    props.memory = buildMemoryProp(memoryLimits);
 
     if (!this.runAsynchronously) {
       props.outputRecordKey = {
@@ -433,16 +399,11 @@ export default {
       );
     }
 
-    if (buildTag) {
-      await apify.resolveBuildId(actorId, buildTag);
-    }
-
-    // Fetch the build once and reuse it for both the input schema and the
-    // Actor's declared memory limits (avoids adding a second build fetch).
+    // Fetch build once for both schema and memory limits.
     const build = await this.getBuildOrThrow(actorId, buildTag);
     const {
       min: minMemory, max: maxMemory,
-    } = this.getMemoryLimits(build);
+    } = getMemoryLimits(build);
 
     // Extract the input schema, tolerating Actors that have none (e.g.
     // apify/hello-world), which run with the raw input passed through.
@@ -455,21 +416,13 @@ export default {
       }
     }
 
-    // Defensive memory validation. The dropdown already filters valid options
-    // at configuration time; this guards against stale or injected values.
-    if (memory !== undefined && memory !== null && memory !== "") {
-      const mem = Number(memory);
-      const isValidStep = MEMORY_MBYTES_OPTIONS.some(({ value }) => value === mem);
-      if (!isValidStep || mem < minMemory || mem > maxMemory) {
-        throw new Error(
-          `Memory ${memory} MB is not valid for Actor "${actorDetails.title || actorDetails.name}". It must be a power of two between ${minMemory} and ${maxMemory} MB.`,
-        );
-      }
-    }
+    // Validate memory is a power of two within allowed limits.
+    const validatedMemory = validateMemory(memory, {
+      min: minMemory,
+      max: maxMemory,
+    });
 
-    // Prepare input
-    // Use data (dynamic props from schema) if it has any keys,
-    // otherwise fall back to this.properties (fallback object prop)
+    // Prepare input: use data if present, else fallback to parsed properties
     const fallback = properties
       ? parseObject(properties)
       : {};
@@ -486,8 +439,8 @@ export default {
       ...(timeout && {
         timeout: Number(timeout),
       }),
-      ...(memory && {
-        memory: Number(memory),
+      ...(validatedMemory && {
+        memory: validatedMemory,
       }),
       ...(maxItems && {
         maxItems: Number(maxItems),
