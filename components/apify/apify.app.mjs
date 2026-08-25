@@ -168,15 +168,13 @@ export default {
         limit: LIMIT,
       });
 
-      if (actorSource !== "store" && page === 0 && items.length === 0) {
-        const { items: storeItems } = await this.listActors({
-          offset: 0,
-          limit: LIMIT,
-        });
-        return storeItems.map((actor) => ({
-          label: this.formatActorOrTaskLabel(actor),
-          value: actor.id,
-        }));
+      if (page === 0 && items.length === 0 && actorSource !== "store") {
+        return [
+          {
+            label: "No recent Actors, switch to \"Apify Store Actors\" above",
+            value: "",
+          },
+        ];
       }
 
       return items.map((actor) => ({

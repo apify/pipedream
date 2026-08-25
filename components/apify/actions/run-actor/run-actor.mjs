@@ -58,6 +58,7 @@ export default {
       reloadProps: true,
       optional: true,
     },
+    // Renamed from `runAsynchronously` for clarity.
     waitForFinish: {
       type: "boolean",
       label: "Wait for Finish",
@@ -267,6 +268,24 @@ export default {
   },
   async additionalProps() {
     const props = {};
+
+    // Show a hint if user set actorId to sentinel value "".
+    // Displayed only when user has no recently-used Actors.
+    if (this.actorId === "") {
+      return {
+        actorHint: {
+          type: "alert",
+          alertType: "info",
+          content: "No Actor selected. Set **Search Actors from** to **Apify Store Actors** above, then choose an Actor to run.",
+        },
+      };
+    }
+
+    // Not picked yet (undefined): show nothing rather than erroring.
+    if (!this.actorId) {
+      return props;
+    }
+
     try {
       const schema = await this.getSchema(this.actorId, this.buildTag);
       const {
