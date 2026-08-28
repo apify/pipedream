@@ -56,6 +56,9 @@ export default {
         actorId: this.actorId,
       };
     },
+    getEmptyConditionMessage() {
+      return "No Actor selected. If the list was empty, set \"Search Actors from\" to \"Apify Store Actors\" and pick an Actor before deploying.";
+    },
     getSummary(body) {
       return `A new Actor run ${body.eventData.actorRunId} has finished`;
     },
