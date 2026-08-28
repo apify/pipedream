@@ -1,6 +1,9 @@
 /* eslint-disable no-unused-vars */
 import apify from "../../apify.app.mjs";
 import { parseObject } from "../../common/utils.mjs";
+import {
+  getMemoryLimits, buildMemoryProp, validateMemory,
+} from "../../common/memory.mjs";
 import { WEBHOOK_EVENT_TYPES } from "@apify/consts";
 import { ConfigurationError } from "@pipedream/platform";
 
@@ -72,12 +75,6 @@ export default {
       description: "Optional timeout for the run, in seconds. By default, the run uses a timeout specified in the default run configuration for the Actor.",
       optional: true,
     },
-    memory: {
-      type: "string",
-      label: "Memory (MB)",
-      description: "Memory limit for the run, in megabytes. The amount of memory can be set to a power of 2 with a minimum of 128. By default, the run uses a memory limit specified in the default run configuration for the Actor.",
-      optional: true,
-    },
     maxItems: {
       type: "string",
       label: "Max Items",
@@ -110,9 +107,7 @@ export default {
         return Infinity;
       }
     },
-    // Returns { output, capped }: `capped` tells run() explicitly whether the value was
-    // replaced by a reference, so it never has to infer capping from the value's own shape
-    // (an Actor OUTPUT could legitimately contain a `truncated` field).
+    // Returns { output, capped }, where capped indicates if the value was replaced by a reference.
     async capOutputRecord(record, keyValueStoreId, recordKey) {
       if (record?.value == null) {
         return {
@@ -165,14 +160,16 @@ export default {
       }
       return num;
     },
-    async getSchema(actorId, buildTag) {
+    async getBuildOrThrow(actorId, buildTag) {
       const build = await this.apify.getBuild(actorId, buildTag);
       if (!build) {
         throw new Error(`No build found for Actor ${actorId}`);
       }
-
+      return build;
+    },
+    extractInputSchema(build, actorId) {
       // Case 1: schema is already an object
-      if (build.actorDefinition && build.actorDefinition.input) {
+      if (build.actorDefinition?.input) {
         return build.actorDefinition.input;
       }
 
@@ -196,20 +193,26 @@ export default {
       noSchemaError.noInputSchema = true;
       throw noSchemaError;
     },
-    async prepareData(data) {
-      let schema;
-      try {
-        schema = await this.getSchema(this.actorId, this.buildTag);
-      } catch (err) {
-        // Actor has no input schema: send the raw input (defaults to {}) as-is.
-        if (err?.noInputSchema) {
-          return data;
+    async getSchema(actorId, buildTag) {
+      const build = await this.getBuildOrThrow(actorId, buildTag);
+      return this.extractInputSchema(build, actorId);
+    },
+    async prepareData(data, schema) {
+      let resolvedSchema = schema;
+      if (resolvedSchema === undefined) {
+        // No schema passed by the caller: fetch it, tolerating Actors with none.
+        try {
+          resolvedSchema = await this.getSchema(this.actorId, this.buildTag);
+        } catch (err) {
+          if (err?.noInputSchema) return data;
+          throw err;
         }
-        throw err;
       }
+      // No input schema (e.g. apify/hello-world): send the raw input as-is.
+      if (!resolvedSchema) return data;
 
       const newData = {};
-      const { properties } = schema;
+      const { properties } = resolvedSchema;
 
       // Iterate over properties from the schema because newData might contain additional fields
       for (const [
@@ -237,10 +240,13 @@ export default {
     },
     prepareOptions(value) {
       if (value.enum && value.enumTitles) {
-        return value.enum.map((val, i) => ({
-          value: val,
-          label: value.enumTitles[i],
-        }));
+        // Drop options with an empty or null label
+        return value.enum
+          .map((val, i) => ({
+            value: val,
+            label: value.enumTitles[i],
+          }))
+          .filter(({ label }) => label !== "" && label != null);
       }
     },
     setValue(editor, item) {
@@ -286,8 +292,11 @@ export default {
       return props;
     }
 
+    let memoryLimits = getMemoryLimits();
     try {
-      const schema = await this.getSchema(this.actorId, this.buildTag);
+      const build = await this.getBuildOrThrow(this.actorId, this.buildTag);
+      memoryLimits = getMemoryLimits(build);
+      const schema = this.extractInputSchema(build, this.actorId);
       const {
         properties, required: requiredProps = [],
       } = schema;
@@ -352,6 +361,9 @@ export default {
       };
     }
 
+    // Actor memory dropdown, filtered by per-actor limits.
+    props.memory = buildMemoryProp(memoryLimits);
+
     if (this.waitForFinish) {
       props.outputRecordKey = {
         type: "string",
@@ -406,20 +418,37 @@ export default {
       );
     }
 
-    if (buildTag) {
-      await apify.resolveBuildId(actorId, buildTag);
+    // Fetch build once for both schema and memory limits.
+    const build = await this.getBuildOrThrow(actorId, buildTag);
+    const {
+      min: minMemory, max: maxMemory,
+    } = getMemoryLimits(build);
+
+    // Extract the input schema, tolerating Actors that have none (e.g.
+    // apify/hello-world), which run with the raw input passed through.
+    let schema = null;
+    try {
+      schema = this.extractInputSchema(build, actorId);
+    } catch (err) {
+      if (!err?.noInputSchema) {
+        throw err;
+      }
     }
 
-    // Prepare input
-    // Use data (dynamic props from schema) if it has any keys,
-    // otherwise fall back to this.properties (fallback object prop)
+    // Validate memory is a power of two within allowed limits.
+    const validatedMemory = validateMemory(memory, {
+      min: minMemory,
+      max: maxMemory,
+    });
+
+    // Prepare input: use data if present, else fallback to parsed properties
     const fallback = properties
       ? parseObject(properties)
       : {};
     const rawInput = Object.keys(data).length > 0
       ? data
       : fallback;
-    const input = await this.prepareData(rawInput);
+    const input = await this.prepareData(rawInput, schema);
 
     // Build params safely
     const params = {
@@ -429,8 +458,8 @@ export default {
       ...(timeout && {
         timeout: Number(timeout),
       }),
-      ...(memory && {
-        memory: Number(memory),
+      ...(validatedMemory && {
+        memory: validatedMemory,
       }),
       ...(maxItems && {
         maxItems: Number(maxItems),

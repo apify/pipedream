@@ -215,6 +215,10 @@ export default {
       return this._client().task(taskId)
         .start(input, params);
     },
+    getTask(taskId) {
+      return this._client().task(taskId)
+        .get();
+    },
     getActor({ actorId }) {
       return this._client().actor(actorId)
         .get();
