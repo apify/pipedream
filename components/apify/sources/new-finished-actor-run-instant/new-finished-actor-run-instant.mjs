@@ -17,7 +17,7 @@ export default {
     actorSource: {
       type: "string",
       label: "Search Actors from",
-      description: "Where to search for Actors. Valid options are Store and Recently used Actors.",
+      description: "Where to search for Actors. Choose **Apify Store Actors** to browse the public [Apify Store](https://apify.com/store), or **Recently used Actors** to pick from Actors you've run before.",
       options: [
         {
           label: "Apify Store Actors",
@@ -55,6 +55,9 @@ export default {
       return {
         actorId: this.actorId,
       };
+    },
+    getEmptyConditionMessage() {
+      return "No Actor selected. If the list was empty, set \"Search Actors from\" to \"Apify Store Actors\" and pick an Actor before deploying.";
     },
     getSummary(body) {
       return `A new Actor run ${body.eventData.actorRunId} has finished`;

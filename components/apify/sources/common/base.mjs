@@ -2,6 +2,7 @@ import { createHash } from "crypto";
 import {
   WEBHOOK_EVENT_TYPE_GROUPS, WEBHOOK_EVENT_TYPES,
 } from "@apify/consts";
+import { ConfigurationError } from "@pipedream/platform";
 import apify from "../../apify.app.mjs";
 
 export default {
@@ -40,6 +41,14 @@ export default {
   },
   hooks: {
     async activate() {
+      // Block empty or unset condition targets.
+      if (Object.values(this.getCondition()).some((value) => !value)) {
+        throw new ConfigurationError(
+          this.getEmptyConditionMessage?.()
+            ?? "No target selected. Select an Actor or Task before deploying.",
+        );
+      }
+
       // Whitelist terminal states only; fall back to all when none are valid.
       const selected = (this.eventTypes ?? [])
         .filter((type) => WEBHOOK_EVENT_TYPE_GROUPS.ACTOR_RUN_TERMINAL.includes(type));

@@ -26,7 +26,7 @@ export default {
     actorSource: {
       type: "string",
       label: "Search Actors from",
-      description: "Where to search for Actors. Valid options are Store and Recently used Actors.",
+      description: "Where to search for Actors. Choose **Apify Store Actors** to browse the public [Apify Store](https://apify.com/store), or **Recently used Actors** to pick from Actors you've run before.",
       options: [
         {
           label: "Apify Store Actors",
@@ -61,10 +61,11 @@ export default {
       reloadProps: true,
       optional: true,
     },
-    runAsynchronously: {
+    // Renamed from `runAsynchronously` for clarity.
+    waitForFinish: {
       type: "boolean",
-      label: "Run Asynchronously",
-      description: "Set to `true` to run the Actor asynchronously",
+      label: "Wait for Finish",
+      description: "If `true` (default), the step waits for the Actor run to finish and returns its output. If `false`, the step starts the run and returns immediately with the run details, without waiting.",
       reloadProps: true,
       default: true,
     },
@@ -162,7 +163,7 @@ export default {
     async getBuildOrThrow(actorId, buildTag) {
       const build = await this.apify.getBuild(actorId, buildTag);
       if (!build) {
-        throw new Error(`No build found for actor ${actorId}`);
+        throw new Error(`No build found for Actor ${actorId}`);
       }
       return build;
     },
@@ -180,14 +181,14 @@ export default {
             : build.inputSchema;
         } catch (err) {
           throw new Error(
-            `Failed to parse inputSchema for actor ${actorId}: ${err.message}`,
+            `Failed to parse inputSchema for Actor ${actorId}: ${err.message}`,
           );
         }
       }
 
       // Case 3: no schema at all (e.g. apify/hello-world)
       const noSchemaError = new Error(
-        `No input schema found for actor ${actorId}. Has it been built successfully?`,
+        `No input schema found for Actor ${actorId}. Has it been built successfully?`,
       );
       noSchemaError.noInputSchema = true;
       throw noSchemaError;
@@ -273,6 +274,24 @@ export default {
   },
   async additionalProps() {
     const props = {};
+
+    // Show a hint if user set actorId to sentinel value "".
+    // Displayed only when user has no recently-used Actors.
+    if (this.actorId === "") {
+      return {
+        actorHint: {
+          type: "alert",
+          alertType: "info",
+          content: "No Actor selected. Set **Search Actors from** to **Apify Store Actors** above, then choose an Actor to run.",
+        },
+      };
+    }
+
+    // Not picked yet (undefined): show nothing rather than erroring.
+    if (!this.actorId) {
+      return props;
+    }
+
     let memoryLimits = getMemoryLimits();
     try {
       const build = await this.getBuildOrThrow(this.actorId, this.buildTag);
@@ -345,7 +364,7 @@ export default {
     // Actor memory dropdown, filtered by per-actor limits.
     props.memory = buildMemoryProp(memoryLimits);
 
-    if (!this.runAsynchronously) {
+    if (this.waitForFinish) {
       props.outputRecordKey = {
         type: "string",
         label: "Output Record Key",
@@ -372,7 +391,7 @@ export default {
       apify,
       actorId,
       buildTag,
-      runAsynchronously,
+      waitForFinish,
       outputRecordKey,
       timeout,
       memory,
@@ -395,7 +414,7 @@ export default {
 
     if (!actorDetails.stats?.totalBuilds || actorDetails.stats.totalBuilds === 0) {
       throw new Error(
-        `Actor "${actorDetails.title || actorDetails.name}" has no builds. Please build it first before running.`,
+        `Actor "${actorDetails.title || actorDetails.name}" has no builds yet and can't be run until it's built. Open the Actor in Apify Console and build it (Source → Code → Build), or trigger a build via the Apify CLI/API, then run this step again.`,
       );
     }
 
@@ -460,8 +479,8 @@ export default {
 
     let run;
 
-    if (runAsynchronously) {
-      // async run
+    if (!waitForFinish) {
+      // async run — start and return immediately without waiting
       run = await apify.runActorAsynchronously({
         actorId,
         data: input,
