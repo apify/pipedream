@@ -1,13 +1,20 @@
 /* eslint-disable no-unused-vars */
 import apify from "../../apify.app.mjs";
 import { parseObject } from "../../common/utils.mjs";
+import {
+  getMemoryLimits, buildMemoryProp, validateMemory,
+} from "../../common/memory.mjs";
 import { WEBHOOK_EVENT_TYPES } from "@apify/consts";
+import { ConfigurationError } from "@pipedream/platform";
+
+// Max OUTPUT record size (bytes) returned inline; oversized values get a reference object.
+const MAX_OUTPUT_BYTES = 256 * 1024;
 
 export default {
   key: "apify-run-actor",
   name: "Run Actor",
   description: "Performs an execution of a selected Actor in Apify. [See the documentation](https://docs.apify.com/api/v2#/reference/actors/run-collection/run-actor)",
-  version: "0.0.7",
+  version: "0.0.8",
   annotations: {
     destructiveHint: false,
     openWorldHint: true,
@@ -19,7 +26,7 @@ export default {
     actorSource: {
       type: "string",
       label: "Search Actors from",
-      description: "Where to search for Actors. Valid options are Store and Recently used Actors.",
+      description: "Where to search for Actors. Choose **Apify Store Actors** to browse the public [Apify Store](https://apify.com/store), or **Recently used Actors** to pick from Actors you've run before.",
       options: [
         {
           label: "Apify Store Actors",
@@ -54,10 +61,11 @@ export default {
       reloadProps: true,
       optional: true,
     },
-    runAsynchronously: {
+    // Renamed from `runAsynchronously` for clarity.
+    waitForFinish: {
       type: "boolean",
-      label: "Run Asynchronously",
-      description: "Set to `true` to run the Actor asynchronously",
+      label: "Wait for Finish",
+      description: "If `true` (default), the step waits for the Actor run to finish and returns its output. If `false`, the step starts the run and returns immediately with the run details, without waiting.",
       reloadProps: true,
       default: true,
     },
@@ -65,12 +73,6 @@ export default {
       type: "string",
       label: "Timeout (seconds)",
       description: "Optional timeout for the run, in seconds. By default, the run uses a timeout specified in the default run configuration for the Actor.",
-      optional: true,
-    },
-    memory: {
-      type: "string",
-      label: "Memory (MB)",
-      description: "Memory limit for the run, in megabytes. The amount of memory can be set to a power of 2 with a minimum of 128. By default, the run uses a memory limit specified in the default run configuration for the Actor.",
       optional: true,
     },
     maxItems: {
@@ -94,7 +96,52 @@ export default {
     },
   },
   methods: {
+    outputByteSize(value) {
+      if (value == null) return 0;
+      if (Buffer.isBuffer(value)) return value.length;
+      if (typeof value === "string") return Buffer.byteLength(value);
+      try {
+        return Buffer.byteLength(JSON.stringify(value));
+      } catch {
+        // Unserializable (e.g. circular) -> treat as oversized so we never return it inline.
+        return Infinity;
+      }
+    },
+    // Returns { output, capped }, where capped indicates if the value was replaced by a reference.
+    async capOutputRecord(record, keyValueStoreId, recordKey) {
+      if (record?.value == null) {
+        return {
+          output: undefined,
+          capped: false,
+        };
+      }
+      const size = this.outputByteSize(record.value);
+      if (size <= MAX_OUTPUT_BYTES) {
+        return {
+          output: record.value,
+          capped: false,
+        };
+      }
+      return {
+        capped: true,
+        output: {
+          truncated: true,
+          message:
+            "The OUTPUT record exceeds the safe step-output size and was not returned inline. " +
+            "Retrieve it via `recordUrl`, or use the Get Key-Value Store Record action.",
+          keyValueStoreId,
+          recordKey,
+          contentType: record.contentType,
+          size,
+          // getKVSRecordUrl -> apify-client getRecordPublicUrl is async; must await or the
+          // unresolved Promise serializes to `{}` in the step output.
+          recordUrl: await this.apify.getKVSRecordUrl(keyValueStoreId, recordKey),
+        },
+      };
+    },
     getType(type) {
+      // Pipedream has no float type, so numbers are input as strings
+      if (type === "number") return "string";
       return [
         "string",
         "object",
@@ -104,14 +151,25 @@ export default {
         ? type
         : "string[]";
     },
-    async getSchema(actorId, buildTag) {
+    parseNumericInput(value, key) {
+      const num = Number(value);
+      if (value == null || value === "" || Number.isNaN(num)) {
+        throw new ConfigurationError(
+          `Input "${key}" must be a valid number, but received: ${JSON.stringify(value)}.`,
+        );
+      }
+      return num;
+    },
+    async getBuildOrThrow(actorId, buildTag) {
       const build = await this.apify.getBuild(actorId, buildTag);
       if (!build) {
-        throw new Error(`No build found for actor ${actorId}`);
+        throw new Error(`No build found for Actor ${actorId}`);
       }
-
+      return build;
+    },
+    extractInputSchema(build, actorId) {
       // Case 1: schema is already an object
-      if (build.actorDefinition && build.actorDefinition.input) {
+      if (build.actorDefinition?.input) {
         return build.actorDefinition.input;
       }
 
@@ -123,19 +181,38 @@ export default {
             : build.inputSchema;
         } catch (err) {
           throw new Error(
-            `Failed to parse inputSchema for actor ${actorId}: ${err.message}`,
+            `Failed to parse inputSchema for Actor ${actorId}: ${err.message}`,
           );
         }
       }
 
-      // Case 3: no schema at all
-      throw new Error(
-        `No input schema found for actor ${actorId}. Has it been built successfully?`,
+      // Case 3: no schema at all (e.g. apify/hello-world)
+      const noSchemaError = new Error(
+        `No input schema found for Actor ${actorId}. Has it been built successfully?`,
       );
+      noSchemaError.noInputSchema = true;
+      throw noSchemaError;
     },
-    async prepareData(data) {
+    async getSchema(actorId, buildTag) {
+      const build = await this.getBuildOrThrow(actorId, buildTag);
+      return this.extractInputSchema(build, actorId);
+    },
+    async prepareData(data, schema) {
+      let resolvedSchema = schema;
+      if (resolvedSchema === undefined) {
+        // No schema passed by the caller: fetch it, tolerating Actors with none.
+        try {
+          resolvedSchema = await this.getSchema(this.actorId, this.buildTag);
+        } catch (err) {
+          if (err?.noInputSchema) return data;
+          throw err;
+        }
+      }
+      // No input schema (e.g. apify/hello-world): send the raw input as-is.
+      if (!resolvedSchema) return data;
+
       const newData = {};
-      const { properties } = await this.getSchema(this.actorId, this.buildTag);
+      const { properties } = resolvedSchema;
 
       // Iterate over properties from the schema because newData might contain additional fields
       for (const [
@@ -144,6 +221,15 @@ export default {
       ] of Object.entries(properties)) {
         const propValue = data[key];
         if (propValue === undefined) continue;
+
+        if (value.type === "number" || value.type === "integer") {
+          if (Array.isArray(propValue)) {
+            newData[key] = propValue.map((item) => this.parseNumericInput(item, key));
+          } else if (propValue !== "") {
+            newData[key] = this.parseNumericInput(propValue, key);
+          }
+          continue;
+        }
 
         const editor = value.editor || "hidden";
         newData[key] = Array.isArray(propValue)
@@ -154,10 +240,13 @@ export default {
     },
     prepareOptions(value) {
       if (value.enum && value.enumTitles) {
-        return value.enum.map((val, i) => ({
-          value: val,
-          label: value.enumTitles[i],
-        }));
+        // Drop options with an empty or null label
+        return value.enum
+          .map((val, i) => ({
+            value: val,
+            label: value.enumTitles[i],
+          }))
+          .filter(({ label }) => label !== "" && label != null);
       }
     },
     setValue(editor, item) {
@@ -185,8 +274,29 @@ export default {
   },
   async additionalProps() {
     const props = {};
+
+    // Show a hint if user set actorId to sentinel value "".
+    // Displayed only when user has no recently-used Actors.
+    if (this.actorId === "") {
+      return {
+        actorHint: {
+          type: "alert",
+          alertType: "info",
+          content: "No Actor selected. Set **Search Actors from** to **Apify Store Actors** above, then choose an Actor to run.",
+        },
+      };
+    }
+
+    // Not picked yet (undefined): show nothing rather than erroring.
+    if (!this.actorId) {
+      return props;
+    }
+
+    let memoryLimits = getMemoryLimits();
     try {
-      const schema = await this.getSchema(this.actorId, this.buildTag);
+      const build = await this.getBuildOrThrow(this.actorId, this.buildTag);
+      memoryLimits = getMemoryLimits(build);
+      const schema = this.extractInputSchema(build, this.actorId);
       const {
         properties, required: requiredProps = [],
       } = schema;
@@ -239,14 +349,22 @@ export default {
         }
       }
     } catch (e) {
+      if (!e?.noInputSchema) {
+        throw e;
+      }
       props.properties = {
         type: "object",
         label: "Properties",
-        description: e.message || "Schema not available, showing fallback.",
+        description: "This Actor has no input schema. Provide a raw JSON input object, or leave it empty to run the Actor with its own defaults.",
+        optional: true,
+        default: {},
       };
     }
 
-    if (!this.runAsynchronously) {
+    // Actor memory dropdown, filtered by per-actor limits.
+    props.memory = buildMemoryProp(memoryLimits);
+
+    if (this.waitForFinish) {
       props.outputRecordKey = {
         type: "string",
         label: "Output Record Key",
@@ -273,7 +391,7 @@ export default {
       apify,
       actorId,
       buildTag,
-      runAsynchronously,
+      waitForFinish,
       outputRecordKey,
       timeout,
       memory,
@@ -281,6 +399,7 @@ export default {
       maxTotalChargeUsd,
       webhook,
       eventTypes,
+      properties,
       ...data
     } = this;
 
@@ -295,28 +414,41 @@ export default {
 
     if (!actorDetails.stats?.totalBuilds || actorDetails.stats.totalBuilds === 0) {
       throw new Error(
-        `Actor "${actorDetails.title || actorDetails.name}" has no builds. Please build it first before running.`,
+        `Actor "${actorDetails.title || actorDetails.name}" has no builds yet and can't be run until it's built. Open the Actor in Apify Console and build it (Source → Code → Build), or trigger a build via the Apify CLI/API, then run this step again.`,
       );
     }
 
-    if (buildTag) {
-      const taggedBuilds = actorDetails.taggedBuilds || {};
-      if (!taggedBuilds[buildTag]) {
-        throw new Error(
-          `Build with tag "${buildTag}" was not found for actor "${actorDetails.title || actorDetails.name}".`,
-        );
+    // Fetch build once for both schema and memory limits.
+    const build = await this.getBuildOrThrow(actorId, buildTag);
+    const {
+      min: minMemory, max: maxMemory,
+    } = getMemoryLimits(build);
+
+    // Extract the input schema, tolerating Actors that have none (e.g.
+    // apify/hello-world), which run with the raw input passed through.
+    let schema = null;
+    try {
+      schema = this.extractInputSchema(build, actorId);
+    } catch (err) {
+      if (!err?.noInputSchema) {
+        throw err;
       }
     }
 
-    // Prepare input
-    // Use data (dynamic props from schema) if it has any keys,
-    // otherwise fall back to this.properties (fallback object prop)
+    // Validate memory is a power of two within allowed limits.
+    const validatedMemory = validateMemory(memory, {
+      min: minMemory,
+      max: maxMemory,
+    });
+
+    // Prepare input: use data if present, else fallback to parsed properties
+    const fallback = properties
+      ? parseObject(properties)
+      : {};
     const rawInput = Object.keys(data).length > 0
       ? data
-      : (this.properties
-        ? parseObject(this.properties)
-        : {});
-    const input = await this.prepareData(rawInput);
+      : fallback;
+    const input = await this.prepareData(rawInput, schema);
 
     // Build params safely
     const params = {
@@ -326,8 +458,8 @@ export default {
       ...(timeout && {
         timeout: Number(timeout),
       }),
-      ...(memory && {
-        memory: Number(memory),
+      ...(validatedMemory && {
+        memory: validatedMemory,
       }),
       ...(maxItems && {
         maxItems: Number(maxItems),
@@ -347,8 +479,8 @@ export default {
 
     let run;
 
-    if (runAsynchronously) {
-      // async run
+    if (!waitForFinish) {
+      // async run — start and return immediately without waiting
       run = await apify.runActorAsynchronously({
         actorId,
         data: input,
@@ -365,20 +497,21 @@ export default {
         options: params,
       });
 
-      // Fetch OUTPUT record manually
+      // Fetch OUTPUT record and guard its size before returning it inline.
       let output;
+      let capped = false;
       if (run.defaultKeyValueStoreId) {
-        const record = await apify
-          ._client()
-          .keyValueStore(run.defaultKeyValueStoreId)
-          .getRecord(outputRecordKey);
-
-        output = record?.value;
+        const record = await apify.getKVSRecord(run.defaultKeyValueStoreId, outputRecordKey);
+        ({
+          output, capped,
+        } = await this.capOutputRecord(record, run.defaultKeyValueStoreId, outputRecordKey));
       }
-
       $.export(
         "$summary",
-        `The run of an Actor with ID: ${actorId} has finished with status "${run.status}".`,
+        `The run of an Actor with ID: ${actorId} has finished with status "${run.status}".`
+          + (capped
+            ? " OUTPUT was too large to return inline; a reference URL is included."
+            : ""),
       );
 
       return {
