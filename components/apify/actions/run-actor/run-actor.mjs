@@ -63,7 +63,7 @@ export default {
     // Renamed from `runAsynchronously` for clarity.
     waitForFinish: {
       type: "boolean",
-      label: "Wait for Finish",
+      label: "Wait for finish",
       description: "If `true` (default), the step waits for the Actor run to finish and returns its output. If `false`, the step starts the run and returns immediately with the run details, without waiting.",
       reloadProps: true,
       default: true,
@@ -127,7 +127,7 @@ export default {
           truncated: true,
           message:
             "The OUTPUT record exceeds the safe step-output size and was not returned inline. " +
-            "Retrieve it via `recordUrl`, or use the Get Key-Value Store Record action.",
+            "Retrieve it via `recordUrl`, or use the Get key-value store record action.",
           keyValueStoreId,
           recordKey,
           contentType: record.contentType,

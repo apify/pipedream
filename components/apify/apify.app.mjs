@@ -7,7 +7,7 @@ export default {
   propDefinitions: {
     keyValueStoreId: {
       type: "string",
-      label: "Key-Value Store Id",
+      label: "Key-Value Store ID",
       description: "The Id of the key-value store.",
       async options({
         page, unnamed = true,

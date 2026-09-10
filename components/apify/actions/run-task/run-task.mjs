@@ -9,7 +9,7 @@ import { ConfigurationError } from "@pipedream/platform";
 
 export default {
   key: "apify-run-task",
-  name: "Run Task",
+  name: "Run task",
   description: "Run a specific task and optionally wait for its termination.",
   version: "0.0.5",
   annotations: {

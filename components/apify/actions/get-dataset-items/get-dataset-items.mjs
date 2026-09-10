@@ -3,7 +3,7 @@ import { LIMIT } from "../../common/constants.mjs";
 
 export default {
   key: "apify-get-dataset-items",
-  name: "Get Dataset Items",
+  name: "Get dataset items",
   description: "Returns data stored in a dataset. [See the documentation](https://docs.apify.com/api/v2/dataset-items-get)",
   version: "0.0.7",
   annotations: {

@@ -5,7 +5,7 @@ import apify from "../../apify.app.mjs";
 export default {
   ...common,
   key: "apify-new-finished-actor-run-instant",
-  name: "New Finished Actor Run (Instant)",
+  name: "New finished Actor run (instant)",
   description: "Emit new event when a selected Actor is run and finishes.",
   version: "0.0.9",
   type: "source",

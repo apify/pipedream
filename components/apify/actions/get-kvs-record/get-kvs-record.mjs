@@ -3,7 +3,7 @@ import apify from "../../apify.app.mjs";
 
 export default {
   key: "apify-get-kvs-record",
-  name: "Get Key-Value Store Record",
+  name: "Get key-value store record",
   description: "Gets a record from a key-value store.",
   version: "0.0.6",
   annotations: {
