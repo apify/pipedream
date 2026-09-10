@@ -1,6 +1,5 @@
 /* eslint-disable no-unused-vars */
 import apify from "../../apify.app.mjs";
-import { parseObject } from "../../common/utils.mjs";
 import {
   getMemoryLimits, buildMemoryProp, validateMemory,
 } from "../../common/memory.mjs";
@@ -233,8 +232,8 @@ export default {
 
         const editor = value.editor || "hidden";
         newData[key] = Array.isArray(propValue)
-          ? propValue.map((item) => this.setValue(editor, item))
-          : this.setValue(editor, propValue);
+          ? propValue.map((item) => this.setValue(editor, item, key))
+          : this.setValue(editor, propValue, key);
       }
       return newData;
     },
@@ -249,7 +248,7 @@ export default {
           .filter(({ label }) => label !== "" && label != null);
       }
     },
-    setValue(editor, item) {
+    setValue(editor, item, key) {
       switch (editor) {
       case "requestListSources":
         return {
@@ -265,7 +264,15 @@ export default {
         };
       case "json":
       case "schemaBased":
-        if (typeof item === "string") return JSON.parse(item);
+        if (typeof item === "string") {
+          try {
+            return JSON.parse(item);
+          } catch {
+            throw new ConfigurationError(
+              `Input "${key}" must be valid JSON.`,
+            );
+          }
+        }
         return item;
       default:
         return item;
@@ -442,10 +449,21 @@ export default {
       max: maxMemory,
     });
 
-    // Prepare input: use data if present, else fallback to parsed properties
-    const fallback = properties
-      ? parseObject(properties)
-      : {};
+    // Prepare input: use schema-driven fields when present, else the raw JSON
+    // `properties` fallback (schema-less Actors). Fail clearly on malformed JSON
+    // instead of silently passing it through as a string.
+    let fallback = {};
+    if (typeof properties === "string") {
+      if (properties.trim() !== "") {
+        try {
+          fallback = JSON.parse(properties);
+        } catch {
+          throw new ConfigurationError("The Properties field must contain valid JSON.");
+        }
+      }
+    } else if (properties) {
+      fallback = properties;
+    }
     const rawInput = Object.keys(data).length > 0
       ? data
       : fallback;
