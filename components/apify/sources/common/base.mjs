@@ -45,7 +45,7 @@ export default {
       if (Object.values(this.getCondition()).some((value) => !value)) {
         throw new ConfigurationError(
           this.getEmptyConditionMessage?.()
-            ?? "No target selected. Select an Actor or Task before deploying.",
+            ?? "No target selected. Select an Actor or task before deploying.",
         );
       }
 
