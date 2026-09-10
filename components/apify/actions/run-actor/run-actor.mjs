@@ -389,6 +389,7 @@ export default {
   async run({ $ }) {
     const {
       apify,
+      actorSource,
       actorId,
       buildTag,
       waitForFinish,
