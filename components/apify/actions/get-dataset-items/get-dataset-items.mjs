@@ -1,5 +1,6 @@
 import apify from "../../apify.app.mjs";
 import { LIMIT } from "../../common/constants.mjs";
+import { ConfigurationError } from "@pipedream/platform";
 
 export default {
   key: "apify-get-dataset-items",
@@ -57,6 +58,13 @@ export default {
     } = this;
     const datasetId = this.datasetId?.replace("/", "~");
     const offset = this.offset ?? 0;
+
+    if (limit !== undefined && limit < 1) {
+      throw new ConfigurationError("Limit must be 1 or greater.");
+    }
+    if (offset < 0) {
+      throw new ConfigurationError("Offset must be 0 or greater.");
+    }
 
     const results = [];
     let currentOffset = offset;
