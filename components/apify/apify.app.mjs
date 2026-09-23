@@ -2,7 +2,9 @@ import {
   LIMIT, WEB_FETCH_STANDBY_URL, WEB_FETCH_TIMEOUT_MS,
 } from "./common/constants.mjs";
 import { ApifyClient } from "apify-client";
-import { axios } from "@pipedream/platform";
+import {
+  axios, ConfigurationError,
+} from "@pipedream/platform";
 
 export default {
   type: "app",
@@ -325,7 +327,12 @@ export default {
           timeout: WEB_FETCH_TIMEOUT_MS,
         });
       } catch (err) {
-        throw new Error(this.formatWebFetchError(err, url));
+        const message = this.formatWebFetchError(err, url);
+        // 4xx errors, e.g. an invalid token or input, can be fixed by the user.
+        const status = err.response?.status;
+        throw status >= 400 && status < 500
+          ? new ConfigurationError(message)
+          : new Error(message);
       }
     },
     formatWebFetchError(err, url) {

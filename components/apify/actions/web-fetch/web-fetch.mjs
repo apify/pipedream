@@ -1,6 +1,8 @@
 import apify from "../../apify.app.mjs";
 import { WEB_FETCH_FORMATS } from "../../common/constants.mjs";
-import { validateUrl } from "../../common/utils.mjs";
+import {
+  parseObject, validateUrl,
+} from "../../common/utils.mjs";
 
 export default {
   key: "apify-web-fetch",
@@ -48,10 +50,13 @@ export default {
         : [
           "markdown",
         ],
-      headers: this.headers,
+      headers: parseObject(this.headers, "Headers"),
     });
 
-    $.export("$summary", `Fetched ${url} (HTTP ${response.fetch?.httpStatusCode})`);
+    const status = response.fetch?.httpStatusCode;
+    $.export("$summary", status
+      ? `Fetched ${url} (HTTP ${status})`
+      : `Fetched ${url}`);
     return response;
   },
 };
