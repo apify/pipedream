@@ -16,6 +16,13 @@ export default {
   type: "action",
   props: {
     apify,
+    // The description is only shown in the action picker, so repeat the note in the step form.
+    // eslint-disable-next-line pipedream/props-label, pipedream/props-description
+    deprecationNotice: {
+      type: "alert",
+      alertType: "warning",
+      content: "**Deprecated:** use the **Web Fetch** action instead. This action will be removed in a future release.",
+    },
     url: {
       type: "string",
       label: "URL",
