@@ -1,5 +1,5 @@
 import {
-  LIMIT, WEB_FETCH_STANDBY_URL, WEB_FETCH_TIMEOUT_MS,
+  LIMIT, WEB_FETCH_STANDBY_URL, WEB_FETCH_TIMEOUT_MS, WEB_FETCH_TRANSIENT_STATUSES,
 } from "./common/constants.mjs";
 import { ApifyClient } from "apify-client";
 import {
@@ -329,10 +329,13 @@ export default {
       } catch (err) {
         const message = this.formatWebFetchError(err, url);
         // 4xx errors, e.g. an invalid token or input, can be fixed by the user.
+        // Timeouts and rate limits are transient, so they stay retryable errors.
         const status = err.response?.status;
-        throw status >= 400 && status < 500
+        throw status >= 400 && status < 500 && !WEB_FETCH_TRANSIENT_STATUSES.includes(status)
           ? new ConfigurationError(message)
-          : new Error(message);
+          : new Error(message, {
+            cause: err,
+          });
       }
     },
     formatWebFetchError(err, url) {

@@ -34,7 +34,7 @@ export function parseObject(value, label) {
       throw new ConfigurationError(`Invalid ${label}: provide a JSON object, e.g. {"Accept-Language": "fr-FR"}.`);
     }
   }
-  if (typeof parsed !== "object" || Array.isArray(parsed)) {
+  if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
     throw new ConfigurationError(`Invalid ${label}: provide a JSON object, e.g. {"Accept-Language": "fr-FR"}.`);
   }
   return parsed;

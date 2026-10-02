@@ -7,6 +7,17 @@ export const WEB_FETCH_STANDBY_URL = "https://web-fetch.apify.actor/";
 // A single fetch may take up to 2 minutes on the Actor side. Wait a bit longer, so a Standby
 // cold start does not cut off the Actor's own FETCH_TIMEOUT error before it reaches the user.
 export const WEB_FETCH_TIMEOUT_MS = 180 * 1000;
+// Formats that can be cut short and still be read; the rest are dropped when oversized.
+export const WEB_FETCH_TRUNCATABLE_FORMATS = [
+  "markdown",
+  "html",
+  "text",
+];
+// Retryable 4xx statuses (timeout, rate limit) that are not the user's misconfiguration.
+export const WEB_FETCH_TRANSIENT_STATUSES = [
+  408,
+  429,
+];
 export const WEB_FETCH_FORMATS = [
   {
     label: "Markdown",
