@@ -1,5 +1,10 @@
-import { LIMIT } from "./common/constants.mjs";
+import {
+  LIMIT, WEB_FETCH_STANDBY_URL, WEB_FETCH_TIMEOUT_MS, WEB_FETCH_TRANSIENT_STATUSES,
+} from "./common/constants.mjs";
 import { ApifyClient } from "apify-client";
+import {
+  axios, ConfigurationError,
+} from "@pipedream/platform";
 
 export default {
   type: "app",
@@ -297,6 +302,62 @@ export default {
     }) {
       return this._client().dataset(datasetId)
         .listItems(params);
+    },
+    async webFetch({
+      $, url, formats, headers,
+    }) {
+      const data = {
+        url,
+        formats,
+      };
+      if (headers && Object.keys(headers).length) {
+        data.headers = headers;
+      }
+
+      try {
+        return await axios($, {
+          method: "POST",
+          url: WEB_FETCH_STANDBY_URL,
+          headers: {
+            "Authorization": `Bearer ${this.getAuthToken()}`,
+            "Content-Type": "application/json",
+            "x-apify-integration-platform": "pipedream",
+          },
+          data,
+          timeout: WEB_FETCH_TIMEOUT_MS,
+        });
+      } catch (err) {
+        const message = this.formatWebFetchError(err, url);
+        // 4xx errors, e.g. an invalid token or input, can be fixed by the user.
+        // Timeouts and rate limits are transient, so they stay retryable errors.
+        const status = err.response?.status;
+        throw status >= 400 && status < 500 && !WEB_FETCH_TRANSIENT_STATUSES.includes(status)
+          ? new ConfigurationError(message)
+          : new Error(message, {
+            cause: err,
+          });
+      }
+    },
+    formatWebFetchError(err, url) {
+      if ([
+        "ECONNABORTED",
+        "ETIMEDOUT",
+      ].includes(err.code)) {
+        return `Fetching ${url} took more than ${WEB_FETCH_TIMEOUT_MS / 1000} seconds. The website may be slow or too large. Try again, or make sure the workflow timeout is long enough.`;
+      }
+
+      const body = err.response?.data;
+      // Fetch failures use a flat { code, error } envelope, e.g. 502 UPSTREAM_FETCH_ERROR.
+      if (typeof body?.error === "string") {
+        return body.code
+          ? `${body.error} (Web Fetch error code: ${body.code})`
+          : body.error;
+      }
+      // Apify platform errors, e.g. an invalid token, nest the details inside `error`.
+      if (typeof body?.error?.message === "string") {
+        return body.error.message;
+      }
+      return err.message;
     },
     getKVSRecord(kvsId, recordKey) {
       return this._client().keyValueStore(kvsId)

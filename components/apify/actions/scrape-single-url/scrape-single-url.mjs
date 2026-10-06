@@ -1,13 +1,13 @@
 import apify from "../../apify.app.mjs";
 import { WCC_ACTOR_ID } from "../../common/constants.mjs";
 import { ACTOR_JOB_STATUSES } from "@apify/consts";
-import { ConfigurationError } from "@pipedream/platform";
+import { validateUrl } from "../../common/utils.mjs";
 
 export default {
   key: "apify-scrape-single-url",
   name: "Scrape single URL",
-  description: "Executes a scraper on a specific website and returns its content as HTML. This action is perfect for extracting content from a single page. [See the documentation](https://docs.apify.com/sdk/js/docs/examples/crawl-single-url)",
-  version: "0.1.4",
+  description: "**Deprecated:** use the **Web Fetch** action instead. This action will be removed in a future release. Executes a scraper on a specific website and returns its content as HTML. This action is perfect for extracting content from a single page. [See the documentation](https://docs.apify.com/sdk/js/docs/examples/crawl-single-url)",
+  version: "0.1.6",
   annotations: {
     destructiveHint: false,
     openWorldHint: true,
@@ -16,6 +16,13 @@ export default {
   type: "action",
   props: {
     apify,
+    // The description is only shown in the action picker, so repeat the note in the step form.
+    // eslint-disable-next-line pipedream/props-label, pipedream/props-description
+    deprecationNotice: {
+      type: "alert",
+      alertType: "warning",
+      content: "**Deprecated:** use the **Web Fetch** action instead. This action will be removed in a future release.",
+    },
     url: {
       type: "string",
       label: "URL",
@@ -43,31 +50,9 @@ export default {
       default: "playwright:firefox",
     },
   },
-  methods: {
-  // new URL() accepts hosts with empty labels (e.g. "google..com"), so check explicitly
-    validateUrl(url) {
-      let parsedUrl;
-      try {
-        parsedUrl = new URL(url);
-      } catch {
-        throw new ConfigurationError(`Invalid URL "${url}": could not be parsed. Use a valid absolute URL like https://example.com.`);
-      }
-
-      if (![
-        "http:",
-        "https:",
-      ].includes(parsedUrl.protocol)) {
-        throw new ConfigurationError(`Invalid URL "${url}": only http and https protocols are supported. Use a valid absolute URL like https://example.com.`);
-      }
-
-      if (parsedUrl.hostname.split(".").some((label) => label.length === 0)) {
-        throw new ConfigurationError(`Invalid URL "${url}": host contains an empty label. Use a valid absolute URL like https://example.com.`);
-      }
-    },
-  },
   async run({ $ }) {
     const url = this.url?.trim();
-    this.validateUrl(url);
+    validateUrl(url);
 
     const {
       status,

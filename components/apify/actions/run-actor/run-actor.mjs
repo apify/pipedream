@@ -4,16 +4,16 @@ import {
   getMemoryLimits, buildMemoryProp, validateMemory,
 } from "../../common/memory.mjs";
 import { WEBHOOK_EVENT_TYPES } from "@apify/consts";
+import {
+  MAX_OUTPUT_BYTES, outputByteSize,
+} from "../../common/output.mjs";
 import { ConfigurationError } from "@pipedream/platform";
-
-// Max OUTPUT record size (bytes) returned inline; oversized values get a reference object.
-const MAX_OUTPUT_BYTES = 256 * 1024;
 
 export default {
   key: "apify-run-actor",
   name: "Run Actor",
   description: "Performs an execution of a selected Actor in Apify. [See the documentation](https://docs.apify.com/api/v2#/reference/actors/run-collection/run-actor)",
-  version: "0.0.8",
+  version: "0.0.9",
   annotations: {
     destructiveHint: false,
     openWorldHint: true,
@@ -95,17 +95,6 @@ export default {
     },
   },
   methods: {
-    outputByteSize(value) {
-      if (value == null) return 0;
-      if (Buffer.isBuffer(value)) return value.length;
-      if (typeof value === "string") return Buffer.byteLength(value);
-      try {
-        return Buffer.byteLength(JSON.stringify(value));
-      } catch {
-        // Unserializable (e.g. circular) -> treat as oversized so we never return it inline.
-        return Infinity;
-      }
-    },
     // Returns { output, capped }, where capped indicates if the value was replaced by a reference.
     async capOutputRecord(record, keyValueStoreId, recordKey) {
       if (record?.value == null) {
@@ -114,7 +103,7 @@ export default {
           capped: false,
         };
       }
-      const size = this.outputByteSize(record.value);
+      const size = outputByteSize(record.value);
       if (size <= MAX_OUTPUT_BYTES) {
         return {
           output: record.value,
